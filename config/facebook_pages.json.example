@@ -1,0 +1,39 @@
+{
+  "pages": {
+    "Ở Đà Lạt Vậy Thôi": {
+      "page_id": "DÁN_PAGE_ID_Ở_ĐÀ_LẠT_VẬY_THÔI",
+      "access_token": "DÁN_PAGE_ACCESS_TOKEN_Ở_ĐÀ_LẠT_VẬY_THÔI",
+      "expires_at": "2026-12-31T23:59:59Z"
+    },
+    "Mua Chuẩn Xài Lâu": {
+      "page_id": "DÁN_PAGE_ID_MUA_CHUẨN_XÀI_LÂU",
+      "access_token": "DÁN_PAGE_ACCESS_TOKEN_MUA_CHUẨN_XÀI_LÂU",
+      "expires_at": "2026-12-31T23:59:59Z"
+    },
+    "Elegant Steps": {
+      "page_id": "DÁN_PAGE_ID_ELEGANT_STEPS",
+      "access_token": "DÁN_PAGE_ACCESS_TOKEN_ELEGANT_STEPS",
+      "expires_at": "2026-12-31T23:59:59Z"
+    },
+    "YenYen Deals": {
+      "page_id": "DÁN_PAGE_ID_YENYEN_DEALS",
+      "access_token": "DÁN_PAGE_ACCESS_TOKEN_YENYEN_DEALS",
+      "expires_at": "2026-12-31T23:59:59Z"
+    },
+    "Yen Handmade Leather": {
+      "page_id": "DÁN_PAGE_ID_YEN_HANDMADE_LEATHER",
+      "access_token": "DÁN_PAGE_ACCESS_TOKEN_YEN_HANDMADE_LEATHER",
+      "expires_at": "2026-12-31T23:59:59Z"
+    },
+    "Macadamia Hải Nancy": {
+      "page_id": "DÁN_PAGE_ID_MACADAMIA_HẢI_NANCY",
+      "access_token": "DÁN_PAGE_ACCESS_TOKEN_MACADAMIA_HẢI_NANCY",
+      "expires_at": "2026-12-31T23:59:59Z"
+    },
+    "Hiệu giày Hải Nancy": {
+      "page_id": "DÁN_PAGE_ID_HIỆU_GIÀY_HẢI_NANCY",
+      "access_token": "DÁN_PAGE_ACCESS_TOKEN_HIỆU_GIÀY_HẢI_NANCY",
+      "expires_at": "2026-12-31T23:59:59Z"
+    }
+  }
+}

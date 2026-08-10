@@ -1,0 +1,37 @@
+{
+  "mappings": [
+    {
+      "name": "shopee_nesty_affiliate",
+      "detect_headers": ["Mã sản phẩm"],
+      "field_map": {
+        "id": ["Mã sản phẩm", "Project ID", "ID"],
+        "title": ["Tên sản phẩm", "Video Title", "Title"],
+        "affiliate_link": ["Link ưu đãi", "Link sản phẩm"],
+        "video_path": ["Output File", "File ảnh lưu local"],
+        "status": ["Trạng thái Master Prompt", "Status"]
+      }
+    },
+    {
+      "name": "auto_video_factory",
+      "detect_headers": ["Project ID"],
+      "field_map": {
+        "id": ["Project ID", "Mã sản phẩm", "ID"],
+        "title": ["Video Title", "Tên sản phẩm", "Title"],
+        "caption": ["Caption & Hashtags", "Description"],
+        "video_path": ["Output File"],
+        "status": ["Status"]
+      }
+    },
+    {
+      "name": "generic_video_sheet",
+      "detect_headers": ["Output File"],
+      "field_map": {
+        "id": ["ID", "Mã", "SKU", "Project ID", "Mã sản phẩm"],
+        "title": ["Title", "Tiêu đề", "Video Title", "Tên sản phẩm"],
+        "caption": ["Caption", "Mô tả", "Caption & Hashtags", "Description"],
+        "video_path": ["Output File", "Video Path", "Path", "File Path"],
+        "status": ["Status", "Trạng thái"]
+      }
+    }
+  ]
+}

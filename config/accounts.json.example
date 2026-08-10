@@ -1,0 +1,65 @@
+{
+  "brands": {
+    "Yen Handmade Leather": {
+      "facebook": {
+        "page_id": "DÁN_PAGE_ID_YEN_HANDMADE_LEATHER",
+        "access_token": "DÁN_PAGE_ACCESS_TOKEN_YEN_HANDMADE_LEATHER"
+      },
+      "youtube": {
+        "token_path": "config/tokens/youtube_leather.json"
+      },
+      "instagram": {
+        "instagram_account_id": "DÁN_INSTAGRAM_ACCOUNT_ID_LEATHER",
+        "access_token": "DÁN_ACCESS_TOKEN_LEATHER"
+      }
+    },
+    "Hiệu giày Hải Nancy": {
+      "facebook": {
+        "page_id": "DÁN_PAGE_ID_HAI_NANCY_SHOES",
+        "access_token": "DÁN_PAGE_ACCESS_TOKEN_HAI_NANCY_SHOES"
+      }
+    },
+    "YenYen Farm": {
+      "facebook": {
+        "page_id": "DÁN_PAGE_ID_YENYEN_FARM",
+        "access_token": "DÁN_PAGE_ACCESS_TOKEN_YENYEN_FARM"
+      }
+    },
+    "Macadamia Hải Nancy": {
+      "facebook": {
+        "page_id": "DÁN_PAGE_ID_MACADAMIA",
+        "access_token": "DÁN_PAGE_ACCESS_TOKEN_MACADAMIA"
+      }
+    },
+    "YenYen Deals": {
+      "facebook": {
+        "page_id": "DÁN_PAGE_ID_YENYEN_DEALS",
+        "access_token": "DÁN_PAGE_ACCESS_TOKEN_YENYEN_DEALS"
+      }
+    },
+    "Elegant Steps": {
+      "facebook": {
+        "page_id": "DÁN_PAGE_ID_ELEGANT_STEPS",
+        "access_token": "DÁN_PAGE_ACCESS_TOKEN_ELEGANT_STEPS"
+      }
+    },
+    "Mua Chuẩn Xài Lâu": {
+      "facebook": {
+        "page_id": "DÁN_PAGE_ID_MUA_CHUAN_XAI_LAU",
+        "access_token": "DÁN_PAGE_ACCESS_TOKEN_MUA_CHUAN_XAI_LAU"
+      }
+    },
+    "Ở Đà Lạt vậy thôi": {
+      "facebook": {
+        "page_id": "DÁN_PAGE_ID_DALAT",
+        "access_token": "DÁN_PAGE_ACCESS_TOKEN_DALAT"
+      }
+    },
+    "YenYen Forest Farm": {
+      "facebook": {
+        "page_id": "DÁN_PAGE_ID_FOREST_FARM",
+        "access_token": "DÁN_PAGE_ACCESS_TOKEN_FOREST_FARM"
+      }
+    }
+  }
+}

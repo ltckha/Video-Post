@@ -1,0 +1,14 @@
+{
+  "channels": {
+    "Yen Handmade Leather": {
+      "channel_id": "DÁN_YOUTUBE_CHANNEL_ID_LEATHER",
+      "token_path": "config/tokens/youtube_leather.json",
+      "expires_at": "2026-12-31T23:59:59Z"
+    },
+    "Hiệu giày Hải Nancy": {
+      "channel_id": "DÁN_YOUTUBE_CHANNEL_ID_SHOES",
+      "token_path": "config/tokens/youtube_shoes.json",
+      "expires_at": "2026-12-31T23:59:59Z"
+    }
+  }
+}

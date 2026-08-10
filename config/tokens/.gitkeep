@@ -1,0 +1,3 @@
+# Thư mục lưu trữ OAuth Tokens cho các nền tảng mạng xã hội.
+# Thư mục này chứa thông tin nhạy cảm (Access Tokens, Refresh Tokens) 
+# và ĐÃ ĐƯỢC CHẶN COMMIT TRONG .gitignore!

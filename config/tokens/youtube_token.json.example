@@ -1,0 +1,12 @@
+{
+  "token": "DÁN_ACCESS_TOKEN_YOUTUBE_CỦA_BẠN_VÀO_ĐÂY",
+  "refresh_token": "DÁN_REFRESH_TOKEN_YOUTUBE_CỦA_BẠN_VÀO_ĐÂY",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "client_id": "DÁN_CLIENT_ID_GOOGLE_CỦA_BẠN.apps.googleusercontent.com",
+  "client_secret": "DÁN_CLIENT_SECRET_GOOGLE_CỦA_BẠN",
+  "scopes": [
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube.readonly"
+  ],
+  "expiry": "2026-12-31T23:59:59Z"
+}

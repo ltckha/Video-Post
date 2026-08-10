@@ -1,0 +1,65 @@
+# ==========================================
+# GITIGNORE FOR VIDEO-POST SYSTEM
+# ==========================================
+
+# 1. Environment & API Secrets
+.env
+.env.local
+.env.*.local
+
+# 2. Client Secret Files (Google OAuth)
+*client_secret*.json
+gcp_credentials.json
+
+# 3. OAuth Tokens & Credential Configs (SENSITIVE)
+config/tokens/*
+!config/tokens/.gitkeep
+!config/tokens/*.example
+config/facebook_pages.json
+config/youtube_channels.json
+config/instagram_accounts.json
+
+# 4. Databases & Temporary CSV Exports
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+master_output_sheet.csv
+debug.db
+test_tmp.db
+test_debug.db
+
+# 5. Media & Video Files
+input_videos/*
+!input_videos/.gitkeep
+processed_videos/*
+!processed_videos/.gitkeep
+Product_Assets/*
+*.mp4
+*.mov
+*.avi
+*.mkv
+
+# 6. Python Runtime & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+.pytest_cache/
+
+# 7. Logs & Temporary Files
+logs/*
+!logs/.gitkeep
+*.log
+
+# 8. OS & IDE Junk Files
+.DS_Store
+.vscode/
+.idea/
+*.swp
