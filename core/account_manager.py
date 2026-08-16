@@ -11,12 +11,13 @@ import re
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 logger = logging.getLogger(__name__)
 
 FB_PAGES_FILE = Path("./config/facebook_pages.json")
 YT_CHANNELS_FILE = Path("./config/youtube_channels.json")
+TIKTOK_ACCOUNTS_FILE = Path("./config/tiktok_accounts.json")
 ACCOUNTS_FILE = Path("./config/accounts.json")
 
 
@@ -76,14 +77,17 @@ class AccountManager:
         self,
         fb_pages_file: Optional[Path] = None,
         yt_channels_file: Optional[Path] = None,
+        tiktok_accounts_file: Optional[Path] = None,
         accounts_file: Optional[Path] = None,
     ):
         self.fb_pages_file = fb_pages_file or FB_PAGES_FILE
         self.yt_channels_file = yt_channels_file or YT_CHANNELS_FILE
+        self.tiktok_accounts_file = tiktok_accounts_file or TIKTOK_ACCOUNTS_FILE
         self.accounts_file = accounts_file or ACCOUNTS_FILE
 
         self.fb_pages = self._load_json_file(self.fb_pages_file, "pages")
         self.yt_channels = self._load_json_file(self.yt_channels_file, "channels")
+        self.tiktok_accounts = self._load_json_file(self.tiktok_accounts_file, "accounts")
         self.accounts_brands = self._load_json_file(self.accounts_file, "brands")
 
     def _load_json_file(self, file_path: Path, root_key: str) -> Dict[str, Any]:
@@ -118,6 +122,11 @@ class AccountManager:
                 self._check_expiry_warning(brand_name, platform, creds.get("expires_at"))
                 return creds
 
+        elif plat == "tiktok":
+            creds = self._find_case_insensitive(self.tiktok_accounts, brand_name)
+            if creds:
+                return creds
+
         # 2. Fallback to general accounts.json file
         brand = self._find_case_insensitive(self.accounts_brands, brand_name)
         if brand and plat in brand:
@@ -146,7 +155,48 @@ class AccountManager:
             )
         else:
             days_left = get_days_until_expiration(expires_at)
-            if days_left is not None and days_left <= 30:
-                logger.info(
-                    f"ℹ️ Token for Brand '{brand_name}' on {platform.upper()} valid for {days_left} more days (expires {expires_at})."
+            if days_left is not None and days_left <= 7:
+                logger.warning(
+                    f"⚠️ Token for Brand '{brand_name}' on {platform.upper()} will expire soon ({days_left} days left, on {expires_at})."
                 )
+
+    def list_all_brands(self) -> List[str]:
+        """Get unique list of all brands configured across all platforms."""
+        brands = set()
+        for k in self.fb_pages.keys():
+            brands.add(k)
+        for k in self.yt_channels.keys():
+            brands.add(k)
+        for k in self.tiktok_accounts.keys():
+            brands.add(k)
+        for k in self.accounts_brands.keys():
+            brands.add(k)
+        return sorted(list(brands))
+
+    def get_active_platforms_for_brand(self, brand_name: str) -> List[str]:
+        """Detect which platforms are currently active, authenticated, and ready to post for a brand."""
+        active = []
+
+        # 1. Check Facebook
+        fb_creds = self.get_brand_credentials(brand_name, "facebook")
+        if fb_creds and fb_creds.get("page_id") and not is_token_expired(fb_creds.get("expires_at")):
+            active.append("fb")
+
+        # 2. Check YouTube
+        yt_creds = self.get_brand_credentials(brand_name, "youtube")
+        if yt_creds and yt_creds.get("token_path"):
+            t_path = Path(yt_creds["token_path"])
+            if t_path.exists():
+                active.append("yt")
+
+        # 3. Check Instagram
+        ig_creds = self.get_brand_credentials(brand_name, "instagram")
+        if ig_creds and ig_creds.get("instagram_account_id") and not is_token_expired(ig_creds.get("expires_at")):
+            active.append("ig")
+
+        # 4. Check TikTok (Ready ONLY IF cookie has been imported and verified with status: active)
+        tt_creds = self.get_brand_credentials(brand_name, "tiktok")
+        if tt_creds and tt_creds.get("status") == "active":
+            active.append("tt")
+
+        return active

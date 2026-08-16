@@ -23,16 +23,25 @@ Hệ thống **Video-Post** là bộ công cụ tự động hóa E-Commerce đa
   - **Facebook**: Bài viết chi tiết + 3-5 hashtags (Không CTA).
   - **YouTube Shorts**: 2 dòng đầu có tên SP, KHÔNG để link + `#Shorts` + 3 hashtags.
   - **Instagram**: Thẩm mỹ + 10-15 hashtags.
-  - **TikTok**: Dài, chi tiết, giật gân, giữ chân người xem + 3-5 hashtags.
+  - **TikTok**: Cấu trúc Storytelling nghệ thuật (Quote mở đầu emoji + Dẫn dắt bối cảnh + Checklist ✔ chi tiết + Đúc kết chiều sâu 💡 + Giữ chân xem hết video 🔥 + 5 hashtags).
   - **Shopee**: Nghiêm ngặt < 150 ký tự + 4 tags quy định (`#shopeevideo #luotvuimualien #shopeecreator #videohangthoitrang`).
   - **Zalo**: Bán hàng + 3-5 hashtags.
 
 ### 3. Đồng Bộ Trực Tiếp Tab Trung Tâm Master Sheet ([`core/sheet_client.py`](file:///Users/khan/Developer/Video-Post/core/sheet_client.py))
 - Kết nối trực tiếp qua **Google Sheets API v4** bằng chìa khóa Service Account ([`config/service_account.json`](file:///Users/khan/Developer/Video-Post/config/service_account.json)).
-- Nạp/cập nhật mảng dữ liệu siêu tốc lên Tab **`Master`** trên Google Sheet với **19 Tiêu Đề Cột Tiếng Anh Ngắn Gọn**:
-  `job_id`, `title`, `video_path`, `shopee_link`, `caption_fb`, `caption_yt`, `caption_ig`, `caption_tt`, `caption_shopee`, `caption_zalo`, `brand_fb`, `brand_yt`, `brand_ig`, `status_fb`, `status_yt`, `status_ig`, `status_tt`, `status_shopee`, `status_zalo`.
+- Nạp/cập nhật mảng dữ liệu siêu tốc lên Tab **`Master`** trên Google Sheet với **20 Tiêu Đề Cột Tiếng Anh Ngắn Gọn**:
+  `job_id`, `title`, `video_path`, `shopee_link`, `caption_fb`, `caption_yt`, `caption_ig`, `caption_tt`, `caption_shopee`, `caption_zalo`, `brand_fb`, `brand_yt`, `brand_ig`, `brand_tt`, `status_fb`, `status_yt`, `status_ig`, `status_tt`, `status_shopee`, `status_zalo`.
 
-### 4. Đăng Bài Tự Động & Đăng Tay
+### 4. Đăng Bài Tự Động
 - **Facebook Page**: Tự động đăng video dạng Reel 3 giai đoạn (Resumable Upload) với Token hạn dài nạp từ [`config/facebook_pages.json`](file:///Users/khan/Developer/Video-Post/config/facebook_pages.json).
 - **YouTube Shorts**: Tự động đăng qua YouTube Data API v3 với token đa kênh từ [`config/youtube_channels.json`](file:///Users/khan/Developer/Video-Post/config/youtube_channels.json).
-- **TikTok / Shopee / Zalo**: Đăng tay nhanh từ dữ liệu 19 cột trên Tab `Master_Post`.
+- **Instagram Reels**: Tự động tải lên qua Graph API Video Container từ [`connectors/instagram/uploader.py`](file:///Users/khan/Developer/Video-Post/connectors/instagram/uploader.py).
+- **TikTok Studio**: Tự động đăng bằng Playwright với Chrome Profile độc lập & Cookie Injection từ [`connectors/tiktok/browser_uploader.py`](file:///Users/khan/Developer/Video-Post/connectors/tiktok/browser_uploader.py).
+- **Shopee / Zalo**: Đăng tay nhanh từ dữ liệu chuẩn trên Tab `Master`.
+
+---
+
+## 💡 Ý Tưởng & Tính Năng Phát Triển Tiếp Theo ([`docs/IDEAS.md`](file:///Users/khan/Developer/Video-Post/docs/IDEAS.md))
+1. **Đưa sản phẩm vào Instagram từ link Shopee**: Tự động trích xuất thông tin sản phẩm và tích hợp link/sản phẩm vào bài đăng Instagram Reels/Story/Post.
+2. **Tối ưu hóa hành vi đăng bài TikTok giống người thật**: Bổ sung mô phỏng di chuyển chuột tự nhiên (Bezier Curve), ngắt nghỉ gõ phím (Human Keystroke Dynamics), lướt trang ngẫu nhiên trước khi upload nhằm chống bị TikTok quét chặn và bóp tương tác.
+

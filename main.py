@@ -195,19 +195,13 @@ def process_queue(
     master_url = getattr(settings, "MASTER_SHEET_URL", "")
     webhook_url = getattr(settings, "GOOGLE_SHEET_WEBHOOK_URL", "")
 
-    if not master_url:
-        console.print("[bold red]❌ Chưa cấu hình MASTER_SHEET_URL trong .env[/bold red]")
-        return
-
-    importer = SmartGoogleSheetImporter(sheet_url=master_url)
+    from core.sheet_client import GoogleSheetDirectClient
     try:
-        csv_data = importer.fetch_sheet_csv(tab_name="Master")
+        sc = GoogleSheetDirectClient()
+        rows = sc.fetch_all_records("Master")
     except Exception as e:
-        console.print(f"[bold red]❌ Lỗi đọc Tab Master: {e}[/bold red]")
+        console.print(f"[bold red]❌ Lỗi đọc Tab Master qua Service Account: {e}[/bold red]")
         return
-
-    reader = csv.DictReader(io.StringIO(csv_data))
-    rows = list(reader)
 
     # Determine which target platforms to filter
     if platform == "youtube":
@@ -534,16 +528,14 @@ def rewrite_needs_edit():
         console.print("[bold red]❌ Lỗi: Chưa cấu hình MASTER_SHEET_URL hoặc GOOGLE_SHEET_WEBHOOK_URL trong .env[/bold red]")
         return
 
+    from core.sheet_client import GoogleSheetDirectClient
     console.print("[bold cyan]📥 Đang đọc dữ liệu mới nhất từ Tab Master trên Google Sheet...[/bold cyan]")
-    importer = SmartGoogleSheetImporter(sheet_url=master_url)
     try:
-        csv_data = importer.fetch_sheet_csv(tab_name="Master")
+        sc = GoogleSheetDirectClient()
+        rows = sc.fetch_all_records("Master")
     except Exception as e:
-        console.print(f"[bold red]❌ Lỗi đọc Tab Master: {e}[/bold red]")
+        console.print(f"[bold red]❌ Lỗi đọc Tab Master qua Service Account: {e}[/bold red]")
         return
-
-    reader = csv.DictReader(io.StringIO(csv_data))
-    rows = list(reader)
 
     # Filter rows that have any status set to 'needs_edit'
     needs_edit_rows = []
@@ -710,17 +702,31 @@ def generate_schedule(
     start_min = s_h * 60 + s_m
     end_min = e_h * 60 + e_m
 
-    brand_platforms = [
-        ("Hiệu giày Hải Nancy", ["fb", "yt", "ig"]),
-        ("Mua Chuẩn Xài Lâu", ["fb", "yt"]),
-        ("Macadamia Hải Nancy", ["fb", "yt"]),
-        ("Ở Đà Lạt vậy thôi", ["fb", "yt"]),
-        ("Yen Handmade Leather", ["fb"]),
-        ("YenYen Deals", ["fb"]),
-        ("Elegant Steps", ["fb"]),
+    from core.account_manager import AccountManager
+    mgr = AccountManager()
+
+    # Known brands list (in preferred priority order)
+    candidate_brands = [
+        "Hiệu giày Hải Nancy",
+        "Mua Chuẩn Xài Lâu",
+        "Macadamia Hải Nancy",
+        "Ở Đà Lạt vậy thôi",
+        "Yen Handmade Leather",
+        "YenYen Deals",
+        "Elegant Steps",
     ]
 
+    # Dynamically scan only platforms that are authenticated and ready!
+    brand_platforms = []
+    for b in candidate_brands:
+        active_p = mgr.get_active_platforms_for_brand(b)
+        if active_p:
+            brand_platforms.append((b, active_p))
+
     total_slots = sum(len(p) for _, p in brand_platforms)
+    if total_slots == 0:
+        console.print("[bold yellow]⚠️ Không tìm thấy kênh nào đang ở trạng thái sẵn sàng (ready/active).[/bold yellow]")
+        return
     
     # Generate non-overlapping time slots
     step = max(15, (end_min - start_min) // (total_slots + 2))
@@ -730,18 +736,26 @@ def generate_schedule(
     random.shuffle(selected_times)
 
     time_idx = 0
-    console.print(f"\n[bold cyan]🎲 ĐÃ SINH LỊCH NGẪU NHIÊN CHO TẤT CẢ KÊNH CÓ THỂ ĐĂNG ({start_time} - {end_time}):[/bold cyan]\n")
+    console.print(f"\n[bold cyan]🎲 ĐÃ SINH LỊCH NGẪU NHIÊN CHO {total_slots} KÊNH ĐÃ SẴN SÀNG ({start_time} - {end_time}):[/bold cyan]\n")
 
     for brand_name, platforms in brand_platforms:
-        times_payload = {"action": "update_brand_schedule", "brand": brand_name}
+        times_payload = {
+            "action": "update_brand_schedule",
+            "brand": brand_name,
+            "times_fb": "",
+            "times_yt": "",
+            "times_ig": "",
+            "times_tt": "",
+        }
         summary_str = []
-        for p in platforms:
-            t_min = selected_times[time_idx]
-            time_idx += 1
-            t_str = f"{t_min // 60:02d}:{t_min % 60:02d}"
-            times_payload[f"times_{p}"] = t_str
-            p_label = "📘 FB" if p == "fb" else ("🔴 YT" if p == "yt" else "📸 IG")
-            summary_str.append(f"{p_label}: [bold green]{t_str}[/bold green]")
+        for p in ["fb", "yt", "ig", "tt"]:
+            if p in platforms:
+                t_min = selected_times[time_idx]
+                time_idx += 1
+                t_str = f"{t_min // 60:02d}:{t_min % 60:02d}"
+                times_payload[f"times_{p}"] = t_str
+                p_label = "📘 FB" if p == "fb" else ("🔴 YT" if p == "yt" else ("📸 IG" if p == "ig" else "🎬 TT"))
+                summary_str.append(f"{p_label}: [bold green]{t_str}[/bold green]")
 
         console.print(f"📌 [bold yellow]{brand_name:<22}[/bold yellow] ➡️  " + "  |  ".join(summary_str))
 
@@ -753,6 +767,7 @@ def generate_schedule(
                 times_fb=times_payload.get("times_fb"),
                 times_yt=times_payload.get("times_yt"),
                 times_ig=times_payload.get("times_ig"),
+                times_tt=times_payload.get("times_tt"),
             )
         except Exception as e:
             if webhook_url:
@@ -762,6 +777,144 @@ def generate_schedule(
                     pass
 
     console.print("\n[bold green]🎉 HOÀN TẤT! Đã sinh và cập nhật lịch ngẫu nhiên mới nhất lên Google Sheet Tab Status qua Sheets API v4![/bold green]\n")
+
+
+
+@app.command()
+def tiktok_import_cookies(
+    brand: str = typer.Option(..., help="Tên tài khoản TikTok (Ví dụ: Hiệu giày Hải Nancy, Elegant Steps)"),
+    cookies_file: str = typer.Option(..., help="Đường dẫn file JSON xuất từ Cookie-Editor"),
+):
+    """Nạp cookie phiên đăng nhập (xuất từ Chrome cá nhân) vào profile Playwright của 1 tài khoản TikTok."""
+    from connectors.tiktok.browser_uploader import TikTokBrowserConnector
+
+    console.print(f"\n[bold cyan]🍪 ĐANG NẠP COOKIE CHO TÀI KHOẢN TIKTOK: '{brand}'...[/bold cyan]")
+    console.print(f"📄 Tệp Cookie nguồn: [yellow]{cookies_file}[/yellow]")
+
+    try:
+        connector = TikTokBrowserConnector(brand_name=brand)
+        connector.import_cookies_from_file(cookies_file)
+        console.print(f"[bold green]🎉 Hoàn tất! Tài khoản TikTok '{brand}' đã được nạp cookie và sẵn sàng đăng video tự động.[/bold green]\n")
+    except Exception as e:
+        console.print(f"[bold red]❌ Lỗi khi nạp cookie: {e}[/bold red]\n")
+
+
+@app.command()
+def tiktok_login(
+    brand: str = typer.Option("Hiệu giày Hải Nancy", help="Target TikTok brand name"),
+):
+    """[DEPRECATED] Mở trình duyệt để đăng nhập TikTok Studio (Khuyến nghị dùng tiktok-import-cookies)."""
+    from core.account_manager import AccountManager
+    from connectors.tiktok.browser_uploader import TikTokBrowserUploader
+
+    mgr = AccountManager()
+    creds = mgr.get_brand_credentials(brand, "tiktok") or {}
+    profile_dir = creds.get("profile_dir", f"config/browser_profiles/tiktok_{brand.replace(' ', '_').lower()}")
+
+    console.print(f"\n[bold yellow]⚠️ CẢNH BÁO: Đăng nhập trực tiếp dễ bị TikTok chặn CDP. Vui lòng ưu tiên dùng lệnh 'tiktok-import-cookies'.[/bold yellow]")
+    uploader = TikTokBrowserUploader(headless=False)
+    uploader.login_interactive(profile_dir=profile_dir)
+
+
+@app.command()
+def tiktok_post(
+    job_id: Optional[str] = typer.Option(None, help="Specific Job ID from Master sheet"),
+    brand: Optional[str] = typer.Option(None, help="Filter by brand name"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Simulate without posting"),
+):
+    """Tự động đăng bài lên TikTok Studio từ dữ liệu Tab Master trên Google Sheet."""
+    from core.account_manager import AccountManager
+    from core.sheet_client import GoogleSheetDirectClient
+    from connectors.tiktok.browser_uploader import TikTokBrowserConnector
+    from connectors.base import PostMetadata
+
+    console.print(f"\n[bold magenta]🎬 KHỞI CHẠY ĐĂNG BÀI TỰ ĐỘNG LÊN TIKTOK STUDIO (Mode: {'DRY-RUN' if dry_run else 'LIVE'})...[/bold magenta]")
+    
+    mgr = AccountManager()
+    sc = GoogleSheetDirectClient()
+    records = sc.fetch_all_records("Master")
+    
+    # Filter candidate jobs
+    candidates = []
+    for r in records:
+        st = str(r.get("status_tt", "")).strip().lower()
+        if st in ["pending", "manual_pending"]:
+            b_tt = str(r.get("brand_tt") or r.get("brand_fb") or "").strip()
+            
+            # If user explicitly requested a brand
+            if brand and b_tt.lower() != str(brand).strip().lower():
+                continue
+
+            # If no brand requested, ONLY take candidates from brands that have active TikTok cookies
+            if not brand and "tt" not in mgr.get_active_platforms_for_brand(b_tt):
+                continue
+
+            if job_id and str(r.get("job_id", "")).strip() != str(job_id).strip():
+                continue
+
+            candidates.append(r)
+
+    if not candidates:
+        if brand:
+            console.print(f"[bold yellow]✨ Không tìm thấy bài nào đang 'pending' cho Brand: '{brand}'[/bold yellow]")
+        else:
+            console.print("[bold yellow]✨ Không có bài nào đang ở trạng thái 'pending' cho các Brand TikTok đã nạp Cookie.[/bold yellow]")
+        return
+
+    console.print(f"[bold cyan]🔍 Tìm thấy {len(candidates)} bài sẵn sàng đăng TikTok.[/bold cyan]")
+    target = candidates[0]
+    j_id = target.get("job_id")
+    title = target.get("title")
+    video_path = target.get("video_path")
+    caption_tt = target.get("caption_tt") or title
+    brand_tt = target.get("brand_tt") or target.get("brand_fb") or "Default"
+
+    # Check if brand is active
+    if "tt" not in mgr.get_active_platforms_for_brand(brand_tt):
+        console.print(f"[bold red]❌ Lỗi: Brand '{brand_tt}' chưa được nạp Cookie! Vui lòng nạp Cookie trước bằng Phím 5.[/bold red]\n")
+        return
+
+    console.print(f"\n📌 [bold yellow]Job #{j_id}:[/bold yellow] {title}")
+    console.print(f"  🏢 Brand: [bold green]{brand_tt}[/bold green]")
+    console.print(f"  🎬 Video: [dim]{video_path}[/dim]")
+    console.print(f"  📝 Caption: {caption_tt[:100]}...\n")
+
+    if dry_run:
+        console.print("[bold green]✅ [DRY-RUN] Giả lập đăng TikTok thành công![/bold green]")
+        return
+
+    try:
+        connector = TikTokBrowserConnector(brand_name=brand_tt)
+        metadata = PostMetadata(title=title, description=caption_tt)
+        res = connector.upload_video(video_path=video_path, metadata=metadata)
+        
+        if res.get("status") == "success":
+            # Update status_tt on Google Sheet
+            updated_rec = dict(target)
+            updated_rec["status_tt"] = "published"
+            sc.update_master_rows([updated_rec])
+            console.print(f"[bold green]🎉 Hoàn tất! Đã đăng thành công lên TikTok và cập nhật status_tt = 'published' trên Google Sheet![/bold green]\n")
+        else:
+            console.print(f"[bold red]❌ Đăng bài không thành công: {res}[/bold red]\n")
+    except Exception as e:
+        console.print(f"[bold red]❌ Lỗi khi đăng TikTok cho '{brand_tt}': {e}[/bold red]\n")
+
+
+@app.command()
+def tiktok_daemon():
+    """Khởi động tiến trình chạy nền tự động đăng bài TikTok đúng giờ ngẫu nhiên mỗi ngày."""
+    import time
+    from core.tiktok_scheduler import TikTokDailyScheduler
+
+    console.print("[bold green]🚀 Đang khởi động TikTok Daily Scheduler Daemon (Chạy nền 24/7)...[/bold green]")
+    scheduler = TikTokDailyScheduler()
+    scheduler.start()
+    try:
+        while True:
+            time.sleep(1)
+    except (KeyboardInterrupt, SystemExit):
+        scheduler.stop()
+        console.print("[bold yellow]TikTok Scheduler đã dừng.[/bold yellow]")
 
 
 if __name__ == "__main__":

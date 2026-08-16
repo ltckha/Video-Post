@@ -1,0 +1,24 @@
+{
+  "accounts": {
+    "Hiệu giày Hải Nancy": {
+      "profile_dir": "config/browser_profiles/tiktok_hainancy",
+      "username": "@giayhainancy",
+      "status": "active"
+    },
+    "Mua Chuẩn Xài Lâu": {
+      "profile_dir": "config/browser_profiles/tiktok_muachuanxailau",
+      "username": "@muachuanxailau",
+      "status": "active"
+    },
+    "Macadamia Hải Nancy": {
+      "profile_dir": "config/browser_profiles/tiktok_macadamia",
+      "username": "@macadamia_hainancy",
+      "status": "active"
+    },
+    "Ở Đà Lạt vậy thôi": {
+      "profile_dir": "config/browser_profiles/tiktok_dalat",
+      "username": "@odalattk",
+      "status": "active"
+    }
+  }
+}

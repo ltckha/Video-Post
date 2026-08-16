@@ -14,13 +14,14 @@ while true; do
     echo "=================================================="
     echo "  🚀 VIDEO-POST: BỘ CÔNG CỤ TỰ ĐỘNG ĐĂNG VIDEO 🚀"
     echo "=================================================="
-    echo " 1) ĐĂNG THẬT (Chọn kênh: Facebook / YouTube / Instagram)"
+    echo " 1) ĐĂNG THẬT (Facebook / YouTube / Instagram / TikTok)"
     echo " 2) Nhờ AI viết lại các bài cần chỉnh sửa (rewrite-needs-edit)"
     echo " 3) Thêm Tab đầu vào mới trên Master Sheet (add-tab)"
     echo " 4) Đồng bộ tất cả Tab Đầu Vào & AI Biên Soạn (sync-all-sources)"
+    echo " 5) Nạp Cookie TikTok từ file JSON Cookie-Editor (tiktok-import-cookies)"
     echo " 0) Thoát"
     echo "=================================================="
-    read -rp "👉 Vui lòng chọn (0-4): " choice
+    read -rp "👉 Vui lòng chọn (0-5): " choice
 
     case $choice in
         1)
@@ -30,19 +31,52 @@ while true; do
             echo " 1) Facebook Reels"
             echo " 2) YouTube Shorts"
             echo " 3) Instagram Reels"
-            echo " 4) Tất cả các kênh tự động (FB, YT, IG)"
-            read -rp "👉 Chọn nền tảng (1-4): " p_choice
+            echo " 4) TikTok Studio (Playwright Browser)"
+            echo " 5) Tất cả các kênh tự động (FB, YT, IG, TT)"
+            read -rp "👉 Chọn nền tảng (1-5): " p_choice
             
             PLATFORM="all"
             case $p_choice in
                 1) PLATFORM="facebook" ;;
                 2) PLATFORM="youtube" ;;
                 3) PLATFORM="instagram" ;;
-                4) PLATFORM="all" ;;
+                4) PLATFORM="tiktok" ;;
+                5) PLATFORM="all" ;;
                 *) PLATFORM="all" ;;
             esac
             
-            $PYTHON_BIN main.py process-queue --platform "$PLATFORM" --limit 1
+            if [ "$PLATFORM" == "tiktok" ]; then
+                echo ""
+                echo "=================================================="
+                echo "  🎬 ĐĂNG BÀI TIKTOK (CHỌN THƯƠNG HIỆU / BRAND)"
+                echo "=================================================="
+                echo " 1) Hiệu giày Hải Nancy (✅ Đã nạp Cookie)"
+                echo " 2) Mua Chuẩn Xài Lâu (⚠️ Chưa nạp Cookie)"
+                echo " 3) Macadamia Hải Nancy (⚠️ Chưa nạp Cookie)"
+                echo " 4) Ở Đà Lạt vậy thôi (⚠️ Chưa nạp Cookie)"
+                echo " 5) Yen Handmade Leather (⚠️ Chưa nạp Cookie)"
+                echo " 6) YenYen Deals (⚠️ Chưa nạp Cookie)"
+                echo " 7) Elegant Steps (⚠️ Chưa nạp Cookie)"
+                echo " 0) Quay lại Menu chính"
+                echo "=================================================="
+                read -rp "👉 Chọn Brand muốn đăng TikTok (0-7): " tt_post_choice
+
+                case $tt_post_choice in
+                    1) target_tt_brand="Hiệu giày Hải Nancy" ;;
+                    2) target_tt_brand="Mua Chuẩn Xài Lâu" ;;
+                    3) target_tt_brand="Macadamia Hải Nancy" ;;
+                    4) target_tt_brand="Ở Đà Lạt vậy thôi" ;;
+                    5) target_tt_brand="Yen Handmade Leather" ;;
+                    6) target_tt_brand="YenYen Deals" ;;
+                    7) target_tt_brand="Elegant Steps" ;;
+                    0) continue ;;
+                    *) target_tt_brand="Hiệu giày Hải Nancy" ;;
+                esac
+
+                $PYTHON_BIN main.py tiktok-post --brand "$target_tt_brand"
+            else
+                $PYTHON_BIN main.py process-queue --platform "$PLATFORM" --limit 1
+            fi
             echo ""
             read -rp "Nhấn Enter để quay lại menu..."
             ;;
@@ -67,12 +101,54 @@ while true; do
             echo ""
             read -rp "Nhấn Enter để quay lại menu..."
             ;;
+        5)
+            echo ""
+            echo "=================================================="
+            echo "  🍪 NẠP COOKIE TIKTOK CHO BRAND (TỪ FILE JSON)"
+            echo "=================================================="
+            echo " 1) Hiệu giày Hải Nancy"
+            echo " 2) Mua Chuẩn Xài Lâu"
+            echo " 3) Macadamia Hải Nancy"
+            echo " 4) Ở Đà Lạt vậy thôi"
+            echo " 5) Yen Handmade Leather"
+            echo " 6) YenYen Deals"
+            echo " 7) Elegant Steps"
+            echo " 0) Quay lại Menu chính"
+            echo "=================================================="
+            read -rp "👉 Chọn tài khoản Brand (0-7): " tt_brand_choice
+
+            case $tt_brand_choice in
+                1) target_brand="Hiệu giày Hải Nancy" ;;
+                2) target_brand="Mua Chuẩn Xài Lâu" ;;
+                3) target_brand="Macadamia Hải Nancy" ;;
+                4) target_brand="Ở Đà Lạt vậy thôi" ;;
+                5) target_brand="Yen Handmade Leather" ;;
+                6) target_brand="YenYen Deals" ;;
+                7) target_brand="Elegant Steps" ;;
+                0) continue ;;
+                *) target_brand="Hiệu giày Hải Nancy" ;;
+            esac
+
+            echo ""
+            echo "👉 Kéo-thả file JSON xuất từ Cookie-Editor vào đây (hoặc nhập đường dẫn):"
+            read -rp "📁 Đường dẫn file Cookie JSON: " raw_cookie_file
+            # Strip outer quotes and spaces
+            cookie_file=$(echo "$raw_cookie_file" | sed "s/^['\"]//;s/['\"]$//" | xargs)
+
+            if [ -z "$cookie_file" ]; then
+                echo "⚠️ Bạn chưa nhập đường dẫn file cookie!"
+            else
+                $PYTHON_BIN main.py tiktok-import-cookies --brand "$target_brand" --cookies-file "$cookie_file"
+            fi
+            echo ""
+            read -rp "Nhấn Enter để quay lại menu..."
+            ;;
         0)
             echo "Cảm ơn bạn đã sử dụng Video-Post! Tạm biệt! 👋"
             exit 0
             ;;
         *)
-            echo "Lựa chọn không hợp lệ! Vui lòng nhập từ 0 đến 4."
+            echo "Lựa chọn không hợp lệ! Vui lòng nhập từ 0 đến 5."
             sleep 1
             ;;
     esac

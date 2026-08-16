@@ -119,3 +119,41 @@ def test_instagram_reels_upload_success(tmp_path):
         assert result["status"] == "success"
         assert result["post_id"] == "ig_media_888"
         assert result["platform"] == "instagram"
+
+
+def test_tiktok_cookie_normalization():
+    from connectors.tiktok.browser_uploader import _normalize_cookie_editor_export
+
+    raw_cookies = [
+        {
+            "name": "sessionid",
+            "value": "fake_session_12345",
+            "domain": ".tiktok.com",
+            "path": "/",
+            "sameSite": "no_restriction",
+            "secure": True,
+            "httpOnly": True,
+            "session": True,
+        },
+        {
+            "name": "tt_csrf_token",
+            "value": "token_abc",
+            "domain": ".tiktok.com",
+            "path": "/",
+            "sameSite": "lax",
+            "secure": True,
+            "httpOnly": False,
+            "expirationDate": 1789000000.5,
+        },
+    ]
+
+    normalized = _normalize_cookie_editor_export(raw_cookies)
+    assert len(normalized) == 2
+    assert normalized[0]["name"] == "sessionid"
+    assert normalized[0]["sameSite"] == "None"
+    assert "expires" not in normalized[0]  # session cookie has no expires or -1 omitted
+
+    assert normalized[1]["name"] == "tt_csrf_token"
+    assert normalized[1]["sameSite"] == "Lax"
+    assert normalized[1]["expires"] == 1789000000
+

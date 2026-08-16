@@ -23,7 +23,7 @@ SCOPES = [
 MASTER_HEADERS = [
     "job_id", "title", "video_path", "shopee_link",
     "caption_fb", "caption_yt", "caption_ig", "caption_tt", "caption_shopee", "caption_zalo",
-    "brand_fb", "brand_yt", "brand_ig",
+    "brand_fb", "brand_yt", "brand_ig", "brand_tt",
     "status_fb", "status_yt", "status_ig", "status_tt", "status_shopee", "status_zalo"
 ]
 
@@ -141,6 +141,7 @@ class GoogleSheetDirectClient:
             fb_brand_idx = find_idx(["brand_fb", "Fanpage Facebook", "Brand FB"])
             yt_brand_idx = find_idx(["brand_yt", "Kênh YouTube", "Brand YT"])
             ig_brand_idx = find_idx(["brand_ig", "Kênh Instagram", "Brand IG"])
+            tt_brand_idx = find_idx(["brand_tt", "Kênh TikTok", "Brand TT", "TikTok Brand"])
 
             for row in tab_values[1:]:
                 if not row or not any(row):
@@ -160,8 +161,14 @@ class GoogleSheetDirectClient:
                 b_fb = row[fb_brand_idx].strip() if fb_brand_idx != -1 and fb_brand_idx < len(row) else ""
                 b_yt = row[yt_brand_idx].strip() if yt_brand_idx != -1 and yt_brand_idx < len(row) else ""
                 b_ig = row[ig_brand_idx].strip() if ig_brand_idx != -1 and ig_brand_idx < len(row) else ""
+                b_tt = row[tt_brand_idx].strip() if tt_brand_idx != -1 and tt_brand_idx < len(row) else ""
 
                 prev = existing_master.get(raw_id, {})
+
+                # Automatic transition for TikTok: manual_pending -> pending
+                prev_st_tt = prev.get("status_tt", "pending")
+                if prev_st_tt in ["manual_pending", ""]:
+                    prev_st_tt = "pending"
 
                 master_row = {
                     "job_id": raw_id,
@@ -177,10 +184,11 @@ class GoogleSheetDirectClient:
                     "brand_fb": b_fb or prev.get("brand_fb", "Default"),
                     "brand_yt": b_yt or prev.get("brand_yt", "Default"),
                     "brand_ig": b_ig or prev.get("brand_ig", "Default"),
+                    "brand_tt": b_tt or prev.get("brand_tt", b_fb or "Default"),
                     "status_fb": prev.get("status_fb", "pending"),
                     "status_yt": prev.get("status_yt", "pending"),
                     "status_ig": prev.get("status_ig", "pending"),
-                    "status_tt": prev.get("status_tt", "manual_pending"),
+                    "status_tt": prev_st_tt,
                     "status_shopee": prev.get("status_shopee", "manual_pending"),
                     "status_zalo": prev.get("status_zalo", "manual_pending"),
                 }
@@ -247,6 +255,7 @@ class GoogleSheetDirectClient:
         times_fb: Optional[str] = None,
         times_yt: Optional[str] = None,
         times_ig: Optional[str] = None,
+        times_tt: Optional[str] = None,
     ) -> bool:
         """Directly update posting schedule for a specific brand on Tab Status."""
         status_ws = self.get_worksheet("Status")
@@ -278,6 +287,8 @@ class GoogleSheetDirectClient:
             updates.append({"range": f"F{target_row}", "values": [[times_yt]]})
         if times_ig is not None:
             updates.append({"range": f"G{target_row}", "values": [[times_ig]]})
+        if times_tt is not None:
+            updates.append({"range": f"H{target_row}", "values": [[times_tt]]})
 
         if updates:
             status_ws.batch_update(updates, value_input_option="USER_ENTERED")
@@ -285,3 +296,41 @@ class GoogleSheetDirectClient:
             return True
 
         return False
+
+    def apply_dropdown_validations(self):
+        """Apply Data Validation Dropdowns for all Status columns on Tab Master."""
+        master_ws = self.get_worksheet("Master")
+        sheet_id = master_ws.id
+        
+        # Status columns: Column 15 (O) to Column 20 (T)
+        req = {
+            "setDataValidation": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 1,
+                    "endRowIndex": 1000,
+                    "startColumnIndex": 14,
+                    "endColumnIndex": 20,
+                },
+                "rule": {
+                    "condition": {
+                        "type": "ONE_OF_LIST",
+                        "values": [
+                            {"userEnteredValue": "pending"},
+                            {"userEnteredValue": "published"},
+                            {"userEnteredValue": "failed"},
+                            {"userEnteredValue": "needs_edit"},
+                            {"userEnteredValue": "manual_pending"},
+                            {"userEnteredValue": "not_configured"},
+                        ]
+                    },
+                    "showCustomUi": True,
+                    "strict": False
+                }
+            }
+        }
+        try:
+            self.sh.batch_update({"requests": [req]})
+            logger.info("Applied dropdown validations to Status columns on Tab Master.")
+        except Exception as e:
+            logger.warning(f"Could not apply dropdown validations: {e}")

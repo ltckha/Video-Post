@@ -38,7 +38,20 @@
 
 ---
 
-## 📝 4. Ghi Chú Đăng Tay Cho Các Nền Tảng Khác
-- **TikTok**: Tự động sinh caption chuẩn xu hướng kèm 5 hashtags sát sản phẩm ➡️ Đăng tay từ Tab `Master`.
+## 🎬 4. Nền Tảng TikTok Studio (Đăng Tự Động Qua Playwright Browser)
+
+| STT | Tên Brand / Kênh TikTok | Thư Mục Profile Trình Duyệt Độc Lập | Trạng Thái Xác Thực Cookie |
+| :---: | :--- | :--- | :---: |
+| 1 | **Hiệu giày Hải Nancy** | `config/browser_profiles/tiktok_hainancy/` | ✅ **Đã nạp Cookie thành công 100%** |
+| 2 | **Mua Chuẩn Xài Lâu** | `config/browser_profiles/tiktok_muachuanxailau/` | Chờ nạp Cookie (Menu 5) |
+| 3 | **Macadamia Hải Nancy** | `config/browser_profiles/tiktok_macadamia/` | Chờ nạp Cookie (Menu 5) |
+| 4 | **Ở Đà Lạt vậy thôi** / **Ờ Đà Lạt vậy thôi** | `config/browser_profiles/tiktok_dalat/` | Chờ nạp Cookie (Menu 5) |
+| 5 | **Yen Handmade Leather** | `config/browser_profiles/tiktok_yenhandmade/` | Chờ nạp Cookie (Menu 5) |
+| 6 | **YenYen Deals** | `config/browser_profiles/tiktok_yenyendeals/` | Chờ nạp Cookie (Menu 5) |
+| 7 | **Elegant Steps** | `config/browser_profiles/tiktok_elegantsteps/` | Chờ nạp Cookie (Menu 5) |
+
+---
+
+## 📝 5. Ghi Chú Đăng Tay Cho Các Nền Tảng Khác
 - **Shopee Video**: Tự động sinh caption < 150 ký tự kèm 4 tags quy định ➡️ Đăng tay từ Tab `Master`.
 - **Zalo Video**: Tự động sinh caption bán hàng ➡️ Đăng tay từ Tab `Master`.

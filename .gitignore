@@ -20,6 +20,13 @@ config/tokens/*
 config/facebook_pages.json
 config/youtube_channels.json
 config/instagram_accounts.json
+config/tiktok_accounts.json
+config/browser_profiles/
+!config/browser_profiles/.gitkeep
+*cookies*.json
+*.json.cookie
+tiktok_*.json
+scratch/
 
 # 4. Databases & Temporary CSV Exports
 *.db

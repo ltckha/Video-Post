@@ -135,7 +135,13 @@ QUY TẮC BẮT BUỘC:
    - "facebook": Bài viết Facebook hay, mô tả đặc tính + 3-5 hashtags.
    - "youtube": Bài viết YouTube Shorts (2 dòng đầu có tên SP, tuyệt đối KHÔNG chứa link sản phẩm, có #Shorts + 3 hashtags).
    - "instagram": Bài viết Instagram phong cách thẩm mỹ + 10-15 hashtags hot.
-   - "tiktok": Bài viết TikTok dài, chi tiết, cực kỳ cuốn hút, giật gân, phân tích ưu điểm sản phẩm để giữ chân người xem lâu + BẮT BUỘC CHÈN ĐÚNG CHÍNH XÁC 5 HASHTAGS LIÊN QUAN TRỰC TIẾP TỚI TÊN SẢN PHẨM VÀ NGÀNH HÀNG CỦA BÀI VIẾT Ở CUỐI BÀI.
+   - "tiktok": Bài viết TikTok dài, sâu sắc, kể chuyện hấp dẫn, cuốn hút và giữ chân người xem theo đúng cấu trúc chuẩn sau:
+     + Dòng 1: Câu mở đầu / quote triết lý hoặc gợi mở cảm xúc trong ngoặc kép kèm emoji (Ví dụ: “Một đôi giày cổ điển xứng đáng có thêm một hành trình mới.” 👞✨).
+     + Dòng 2: 1-2 câu dẫn dắt bối cảnh hoặc câu chuyện, giải thích thực trạng/lý do sản phẩm.
+     + Danh sách các gạch đầu dòng bắt đầu bằng dấu ✔ (từ 3-4 dòng) nêu chi tiết các bước, công đoạn, chất liệu hoặc tính năng nổi bật.
+     + 1 đoạn đúc kết chiều sâu/sự tỉ mỉ/tâm huyết mang lại giá trị thực tế bắt đầu bằng icon 💡.
+     + Câu kết kích thích giữ chân người xem hết video (Ví dụ: Xem hết video để theo dõi hành trình... nhé! 🔥).
+     + Cuối bài: Đúng 5 hashtags chất lượng liên quan trực tiếp đến sản phẩm.
    - "shopee": TỔNG ĐỘ DÀI TOÀN BỘ BÀI VIẾT KỂ CẢ HASHTAG PHẢI DƯỚI 150 KÝ TỰ (< 150 chars total). Bắt buộc chứa 4 tags này ở cuối: #shopeevideo #luotvuimualien #shopeecreator {cat_tag}.
    - "zalo": Bài viết Zalo bán hàng + 3-5 hashtags (giống Facebook).
 

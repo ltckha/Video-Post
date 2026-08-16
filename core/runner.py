@@ -9,6 +9,7 @@ from connectors.base import PostMetadata
 from connectors.facebook import FacebookConnector
 from connectors.youtube import YouTubeConnector
 from connectors.instagram import InstagramConnector
+from connectors.tiktok.browser_uploader import TikTokBrowserUploader
 from core.queue import JobQueue
 from core.alerter import AlertManager
 from core.logger import logger
@@ -17,6 +18,7 @@ RATE_LIMITS = {
     "facebook": 5,
     "youtube": 10,
     "instagram": 5,
+    "tiktok": 5,
 }
 
 
@@ -28,6 +30,7 @@ class JobRunner:
             "facebook": FacebookConnector(),
             "youtube": YouTubeConnector(),
             "instagram": InstagramConnector(),
+            "tiktok": TikTokBrowserUploader(),
         }
 
     def process_due_jobs(self, limit: int = 1, dry_run: bool = False) -> int:
@@ -160,6 +163,12 @@ class JobRunner:
                         if creds.get("instagram_account_id"):
                             connector.instagram_account_id = creds["instagram_account_id"]
                         is_configured = True
+                    elif platform == "tiktok":
+                        connector.brand_name = brand_name
+                        profile_dir = creds.get("profile_dir", f"config/browser_profiles/tiktok_{brand_name.replace(' ', '_').lower()}")
+                        from pathlib import Path
+                        connector.profile_dir = Path(profile_dir).resolve()
+                        is_configured = True
             else:
                 # Nếu brand_name là None, kiểm tra xem connector đã có cấu hình mặc định (hoặc mock) chưa
                 if hasattr(connector, 'access_token') and connector.access_token:
@@ -196,10 +205,19 @@ class JobRunner:
 
             try:
                 logger.info(f"Uploading Job #{job_id} to {platform.upper()} (Brand: '{brand_name or 'Default'}')...")
-                upload_res = connector.upload_video(video_path, metadata)
+                if platform == "tiktok":
+                    profile_dir = getattr(connector, "profile_dir", "config/browser_profiles/tiktok_default")
+                    caption_text = metadata.description or metadata.title
+                    upload_res = connector.upload_video(
+                        video_path=video_path,
+                        caption=caption_text,
+                        profile_dir=profile_dir
+                    )
+                else:
+                    upload_res = connector.upload_video(video_path, metadata)
                 upload_res["status"] = "published"  # Chuẩn hóa từ khóa
                 results[platform] = upload_res
-                logger.info(f"Successfully posted Job #{job_id} on {platform} for '{brand_name or 'Default'}': {upload_res.get('video_url')}")
+                logger.info(f"Successfully posted Job #{job_id} on {platform} for '{brand_name or 'Default'}': {upload_res.get('video_url', 'OK')}")
             except Exception as e:
                 err_msg = f"Failed to upload to {platform} for brand '{brand_name}': {e}"
                 logger.error(err_msg)
