@@ -7,9 +7,11 @@
 .env.local
 .env.*.local
 
-# 2. Client Secret Files (Google OAuth)
+# 2. Client Secret Files (Google OAuth & Service Accounts)
 *client_secret*.json
 gcp_credentials.json
+*service*.json
+*video-post-bot*.json
 
 # 3. OAuth Tokens & Credential Configs (SENSITIVE)
 config/tokens/*

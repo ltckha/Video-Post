@@ -27,9 +27,9 @@ Hệ thống **Video-Post** là bộ công cụ tự động hóa E-Commerce đa
   - **Shopee**: Nghiêm ngặt < 150 ký tự + 4 tags quy định (`#shopeevideo #luotvuimualien #shopeecreator #videohangthoitrang`).
   - **Zalo**: Bán hàng + 3-5 hashtags.
 
-### 3. Đồng Bộ Trực Tiếp Tab Trung Tâm Master Sheet ([`core/sheet_exporter.py`](file:///Users/khan/Developer/Video-Post/core/sheet_exporter.py))
-- Gửi HTTP Webhook tới Google Apps Script (`GOOGLE_SHEET_WEBHOOK_URL`).
-- Nạp/cập nhật mảng dữ liệu siêu tốc (`update_rows` / `setValues`) lên Tab **`Master_Post`** trên Google Sheet với **19 Tiêu Đề Cột Tiếng Anh Ngắn Gọn**:
+### 3. Đồng Bộ Trực Tiếp Tab Trung Tâm Master Sheet ([`core/sheet_client.py`](file:///Users/khan/Developer/Video-Post/core/sheet_client.py))
+- Kết nối trực tiếp qua **Google Sheets API v4** bằng chìa khóa Service Account ([`config/service_account.json`](file:///Users/khan/Developer/Video-Post/config/service_account.json)).
+- Nạp/cập nhật mảng dữ liệu siêu tốc lên Tab **`Master`** trên Google Sheet với **19 Tiêu Đề Cột Tiếng Anh Ngắn Gọn**:
   `job_id`, `title`, `video_path`, `shopee_link`, `caption_fb`, `caption_yt`, `caption_ig`, `caption_tt`, `caption_shopee`, `caption_zalo`, `brand_fb`, `brand_yt`, `brand_ig`, `status_fb`, `status_yt`, `status_ig`, `status_tt`, `status_shopee`, `status_zalo`.
 
 ### 4. Đăng Bài Tự Động & Đăng Tay

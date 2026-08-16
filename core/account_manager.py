@@ -112,6 +112,12 @@ class AccountManager:
                 self._check_expiry_warning(brand_name, platform, creds.get("expires_at"))
                 return creds
 
+        elif plat == "instagram":
+            creds = self._find_case_insensitive(self.fb_pages, brand_name)
+            if creds:
+                self._check_expiry_warning(brand_name, platform, creds.get("expires_at"))
+                return creds
+
         # 2. Fallback to general accounts.json file
         brand = self._find_case_insensitive(self.accounts_brands, brand_name)
         if brand and plat in brand:

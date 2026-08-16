@@ -16,12 +16,11 @@ while true; do
     echo "=================================================="
     echo " 1) ĐĂNG THẬT (Chọn kênh: Facebook / YouTube / Instagram)"
     echo " 2) Nhờ AI viết lại các bài cần chỉnh sửa (rewrite-needs-edit)"
-    echo " 3) Đăng bù các bài bị lỗi (retry-partial)"
-    echo " 4) Thêm Tab đầu vào mới trên Master Sheet (add-tab)"
-    echo " 5) Đồng bộ tất cả Tab Đầu Vào & AI Biên Soạn (sync-all-sources)"
+    echo " 3) Thêm Tab đầu vào mới trên Master Sheet (add-tab)"
+    echo " 4) Đồng bộ tất cả Tab Đầu Vào & AI Biên Soạn (sync-all-sources)"
     echo " 0) Thoát"
     echo "=================================================="
-    read -rp "👉 Vui lòng chọn (0-5): " choice
+    read -rp "👉 Vui lòng chọn (0-4): " choice
 
     case $choice in
         1)
@@ -56,19 +55,12 @@ while true; do
             ;;
         3)
             echo ""
-            echo "--- ĐĂNG BÙ CÁC NỀN TẢNG BỊ LỖI ---"
-            $PYTHON_BIN main.py retry-partial --limit 1
-            echo ""
-            read -rp "Nhấn Enter để quay lại menu..."
-            ;;
-        4)
-            echo ""
             echo "--- THÊM TAB ĐẦU VÀO MỚI TRÊN MASTER SHEET ---"
             $PYTHON_BIN main.py add-tab
             echo ""
             read -rp "Nhấn Enter để quay lại menu..."
             ;;
-        5)
+        4)
             echo ""
             echo "--- ĐỒNG BỘ & AI BIÊN SOẠN ---"
             $PYTHON_BIN main.py sync-all-sources
@@ -80,7 +72,7 @@ while true; do
             exit 0
             ;;
         *)
-            echo "Lựa chọn không hợp lệ! Vui lòng nhập từ 0 đến 5."
+            echo "Lựa chọn không hợp lệ! Vui lòng nhập từ 0 đến 4."
             sleep 1
             ;;
     esac

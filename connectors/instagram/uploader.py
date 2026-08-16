@@ -29,6 +29,13 @@ class InstagramUploader:
         """Publish Reels/Video to Instagram Business Account."""
         logger.info(f"Starting Instagram Reels Upload for '{metadata.title}'...")
 
+        # If video_url is missing or local, generate a temporary public HTTP URL for Instagram API
+        if not video_url or not str(video_url).startswith("http"):
+            if video_path and Path(video_path).exists():
+                video_url = self._upload_to_temp_host(video_path)
+            else:
+                raise ValueError(f"Valid video_url or local video_path is required for Instagram. Got: path={video_path}, url={video_url}")
+
         caption = f"{metadata.title}\n\n{metadata.description}"
         if metadata.tags:
             caption += "\n" + " ".join([f"#{t.strip('#')}" for t in metadata.tags])
@@ -67,6 +74,25 @@ class InstagramUploader:
         else:
             logger.error(f"Failed to create Instagram Reels container: {res.text}")
             res.raise_for_status()
+
+    def _upload_to_temp_host(self, local_path: str) -> str:
+        """Upload local mp4 file to catbox.moe to obtain a direct public HTTP URL required by Instagram Graph API."""
+        url = "https://catbox.moe/user/api.php"
+        data = {"reqtype": "fileupload"}
+        path = Path(local_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Video file not found at: {local_path}")
+        
+        logger.info(f"Uploading local video '{path.name}' to temporary public host for Instagram Graph API...")
+        with open(path, "rb") as f:
+            files = {"fileToUpload": f}
+            res = requests.post(url, data=data, files=files, timeout=120)
+            if res.status_code == 200:
+                direct_url = res.text.strip()
+                logger.info(f"Temporary direct video URL generated: {direct_url}")
+                return direct_url
+            else:
+                raise RuntimeError(f"Failed to generate temporary public video URL: {res.text}")
 
     def _wait_for_container_ready(self, container_id: str, timeout_seconds: int = 300):
         url = f"{GRAPH_API_BASE}/{container_id}"

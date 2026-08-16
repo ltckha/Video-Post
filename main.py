@@ -177,8 +177,9 @@ def process_queue(
     limit: int = typer.Option(1, help="Maximum number of jobs to process in this run (default: 1)"),
     platform: str = typer.Option("all", "--platform", help="Target platform to process (facebook, youtube, instagram, all)"),
     brand: str = typer.Option("", "--brand", help="Target brand/page name to filter"),
+    job_id: str = typer.Option("", "--job-id", help="Target specific job_id to process"),
 ):
-    """Process pending video posting jobs (Interactive Preview per platform & brand)."""
+    """Process pending video posting jobs (Interactive Preview per platform, brand, or job_id)."""
     mode = "DRY-RUN" if dry_run else "LIVE"
     platform_name = platform.upper()
     console.print(f"[bold yellow]⚡ TRẠM KIỂM DUYỆT BÀI ĐĂNG [{platform_name}] ({mode} mode, Limit: {limit})...[/bold yellow]")
@@ -186,7 +187,10 @@ def process_queue(
     from core.sheet_importer import SmartGoogleSheetImporter
     from config import settings
     from pathlib import Path
-    import requests, io, csv, json, random
+    import requests, io, csv, json, random, unicodedata
+
+    def norm_text(s: str) -> str:
+        return unicodedata.normalize('NFC', s.strip()) if s else ""
 
     master_url = getattr(settings, "MASTER_SHEET_URL", "")
     webhook_url = getattr(settings, "GOOGLE_SHEET_WEBHOOK_URL", "")
@@ -215,8 +219,8 @@ def process_queue(
     else:
         target_p_list = ["facebook", "youtube", "instagram"]
 
-    # Collect ALL available brands dynamically from JSON configs + Google Sheet
-    available_brands = set()
+    # Collect ALL available brands dynamically with NFC Unicode normalization
+    brand_dict = {}
     for p in target_p_list:
         short_p = "fb" if p == "facebook" else ("yt" if p == "youtube" else ("ig" if p == "instagram" else p))
         
@@ -225,7 +229,10 @@ def process_queue(
             if cfg_path.exists():
                 try:
                     with open(cfg_path, "r", encoding="utf-8") as f:
-                        available_brands.update(json.load(f).get("pages", {}).keys())
+                        for b_k in json.load(f).get("pages", {}).keys():
+                            n_b = norm_text(b_k)
+                            if n_b and n_b.lower() not in brand_dict:
+                                brand_dict[n_b.lower()] = n_b
                 except Exception:
                     pass
         elif p == "youtube":
@@ -233,19 +240,22 @@ def process_queue(
             if cfg_path.exists():
                 try:
                     with open(cfg_path, "r", encoding="utf-8") as f:
-                        available_brands.update(json.load(f).get("channels", {}).keys())
+                        for b_k in json.load(f).get("channels", {}).keys():
+                            n_b = norm_text(b_k)
+                            if n_b and n_b.lower() not in brand_dict:
+                                brand_dict[n_b.lower()] = n_b
                 except Exception:
                     pass
 
         for r in rows:
-            b_val = r.get(f"brand_{short_p}", "").strip()
-            if b_val:
-                available_brands.add(b_val)
+            b_val = norm_text(r.get(f"brand_{short_p}", ""))
+            if b_val and b_val.lower() not in brand_dict:
+                brand_dict[b_val.lower()] = b_val
 
-    sorted_brands = sorted(list(available_brands))
+    sorted_brands = sorted(list(brand_dict.values()))
 
     # Prompt user for Brand selection if not specified via CLI
-    selected_brand = brand.strip()
+    selected_brand = norm_text(brand)
     if not selected_brand and len(target_p_list) == 1 and sorted_brands:
         console.print(f"\n[bold cyan]📌 Danh sách TẤT CẢ Brand/Fanpage khả dụng cho [{platform_name}]:[/bold cyan]")
         for idx, b_name in enumerate(sorted_brands, 1):
@@ -270,30 +280,73 @@ def process_queue(
     else:
         console.print("[bold dim]🎯 Chế độ: Đăng ngẫu nhiên bài của bất kỳ Brand nào.[/bold dim]")
 
-    # Filter rows where status == 'pending' and matches selected brand
-    matching_rows = []
-    for r in rows:
-        p_match = False
+    # Select mode: 1) Random vs 2) Specific job_id
+    target_job_id = norm_text(job_id)
+    if not target_job_id:
+        console.print("\n[bold cyan]📌 Chọn phương thức tìm bài viết để kiểm duyệt:[/bold cyan]")
+        console.print("  [bold yellow]1[/bold yellow]) Rút NGẪU NHIÊN 1 bài đang ở trạng thái 'pending'")
+        console.print("  [bold yellow]2[/bold yellow]) Nhập mã 'job_id' cụ thể")
+        from rich.prompt import Prompt
+        mode_choice = Prompt.ask("👉 Vui lòng chọn (1-2)", choices=["1", "2"], default="1", show_choices=False)
+        if mode_choice == "2":
+            target_job_id = norm_text(Prompt.ask("👉 Nhập mã job_id bạn muốn kiểm duyệt"))
+
+    pending_rows = []
+
+    if target_job_id:
+        # User specified a specific job_id
+        matched_row = None
+        for r in rows:
+            if norm_text(r.get("job_id", "")).lower() == target_job_id.lower():
+                matched_row = r
+                break
+        
+        if not matched_row:
+            console.print(f"[bold red]❌ Không tìm thấy mã bài viết #{target_job_id} trên Tab Master![/bold red]")
+            return
+
+        # Check if matched_row has status == 'pending' for target platform
+        is_pending = False
+        status_summary = []
         for p in target_p_list:
             short_p = "fb" if p == "facebook" else ("yt" if p == "youtube" else ("ig" if p == "instagram" else p))
-            st = r.get(f"status_{short_p}", "").strip().lower()
-            b_val = r.get(f"brand_{short_p}", "").strip()
-            
+            st = norm_text(r.get(f"status_{short_p}", "")).lower()
+            status_summary.append(f"{p.upper()}: {st or 'chưa có'}")
             if st == "pending":
-                if not selected_brand or b_val.lower() == selected_brand.lower():
-                    p_match = True
-                    break
-        if p_match:
-            matching_rows.append(r)
+                is_pending = True
 
-    if not matching_rows:
-        brand_msg = f" cho Brand '{selected_brand}'" if selected_brand else ""
-        console.print(f"[bold green]✨ Không có bài nào đang ở trạng thái 'pending'{brand_msg} cho kênh [{platform_name}] trên Tab Master.[/bold green]")
-        return
+        if is_pending:
+            pending_rows = [matched_row]
+        else:
+            console.print(f"\n[bold yellow]⚠️ Bài viết #{target_job_id} hiện KHÔNG ở trạng thái 'pending'![/bold yellow]")
+            console.print(f"[bold cyan]📋 Trạng thái thực tế hiện tại:[/bold cyan] {', '.join(status_summary)}")
+            console.print("[dim]👉 Bài viết phải ở trạng thái 'pending' thì mới tiến hành kiểm duyệt & đăng bài được.[/dim]\n")
+            return
+    else:
+        # Filter rows where status == 'pending' and matches selected brand
+        matching_rows = []
+        for r in rows:
+            p_match = False
+            for p in target_p_list:
+                short_p = "fb" if p == "facebook" else ("yt" if p == "youtube" else ("ig" if p == "instagram" else p))
+                st = norm_text(r.get(f"status_{short_p}", "")).lower()
+                b_val = norm_text(r.get(f"brand_{short_p}", ""))
+                
+                if st == "pending":
+                    if not selected_brand or b_val.lower() == selected_brand.lower():
+                        p_match = True
+                        break
+            if p_match:
+                matching_rows.append(r)
 
-    # Draw 1 random job from matching rows
-    selected_row = random.choice(matching_rows)
-    pending_rows = [selected_row]
+        if not matching_rows:
+            brand_msg = f" cho Brand '{selected_brand}'" if selected_brand else ""
+            console.print(f"[bold green]✨ Không có bài nào đang ở trạng thái 'pending'{brand_msg} cho kênh [{platform_name}] trên Tab Master.[/bold green]")
+            return
+
+        # Draw 1 random job from matching rows
+        selected_row = random.choice(matching_rows)
+        pending_rows = [selected_row]
 
     from core.queue import JobQueue
     queue = JobQueue()
@@ -379,17 +432,22 @@ def process_queue(
 
             runner._execute_single_job(job_dict, dry_run=dry_run)
 
-            # Update statuses to published on Master tab via Webhook
+            # Update statuses to published on Master tab directly via Service Account API
             updated_rec = dict(r)
             for p in active_platforms:
                 short_p = "fb" if p == "facebook" else ("yt" if p == "youtube" else ("ig" if p == "instagram" else p))
                 updated_rec[f"status_{short_p}"] = "published"
             
-            if webhook_url:
-                try:
-                    requests.post(webhook_url, json={"action": "update_rows", "records": [updated_rec]}, timeout=15)
-                except Exception as ex:
-                    console.print(f"[bold red]⚠️ Lỗi cập nhật Webhook: {ex}[/bold red]")
+            try:
+                from core.sheet_client import GoogleSheetDirectClient
+                sc = GoogleSheetDirectClient()
+                sc.update_master_rows([updated_rec])
+            except Exception as ex:
+                if webhook_url:
+                    try:
+                        requests.post(webhook_url, json={"action": "update_rows", "records": [updated_rec]}, timeout=15)
+                    except Exception:
+                        pass
 
             processed += 1
         elif choice == "e":
@@ -399,11 +457,16 @@ def process_queue(
                 short_p = "fb" if p == "facebook" else ("yt" if p == "youtube" else ("ig" if p == "instagram" else p))
                 updated_rec[f"status_{short_p}"] = "needs_edit"
             
-            if webhook_url:
-                try:
-                    requests.post(webhook_url, json={"action": "update_rows", "records": [updated_rec]}, timeout=15)
-                except Exception as ex:
-                    console.print(f"[bold red]⚠️ Lỗi cập nhật Webhook: {ex}[/bold red]")
+            try:
+                from core.sheet_client import GoogleSheetDirectClient
+                sc = GoogleSheetDirectClient()
+                sc.update_master_rows([updated_rec])
+            except Exception as ex:
+                if webhook_url:
+                    try:
+                        requests.post(webhook_url, json={"action": "update_rows", "records": [updated_rec]}, timeout=15)
+                    except Exception:
+                        pass
         else:
             console.print("[dim]Đã bỏ qua bài này. Trạng thái giữ nguyên 'pending'.[/dim]")
 
@@ -540,15 +603,20 @@ def rewrite_needs_edit():
             console.print(f"  [bold green]✅ Đã tạo 6 caption mới cho #{job_id}! Trạng thái chuyển sang 'pending'.[/bold green]")
 
     if updated_records:
-        console.print("[bold blue]📡 Đang đẩy các bài viết mới biên soạn lên Tab Master...[/bold blue]")
+        console.print("[bold blue]📡 Đang đẩy các bài viết mới biên soạn trực tiếp lên Tab Master...[/bold blue]")
         try:
-            res = requests.post(webhook_url, json={"action": "update_rows", "records": updated_records}, timeout=30)
-            if res.status_code == 200:
-                console.print(f"[bold green]🎉 Hoàn tất! Đã cập nhật {len(updated_records)} bài trực tiếp lên Google Sheet Tab Master.[/bold green]")
-            else:
-                console.print(f"[bold red]⚠️ Lỗi Webhook Apps Script: {res.text}[/bold red]")
+            from core.sheet_client import GoogleSheetDirectClient
+            sc = GoogleSheetDirectClient()
+            sc.update_master_rows(updated_records)
+            console.print(f"[bold green]🎉 Hoàn tất! Đã cập nhật {len(updated_records)} bài trực tiếp lên Google Sheet Tab Master qua Sheets API v4.[/bold green]")
         except Exception as e:
-            console.print(f"[bold red]❌ Lỗi gửi Webhook: {e}[/bold red]")
+            if webhook_url:
+                try:
+                    res = requests.post(webhook_url, json={"action": "update_rows", "records": updated_records}, timeout=30)
+                    if res.status_code == 200:
+                        console.print(f"[bold green]🎉 Hoàn tất! Đã cập nhật {len(updated_records)} bài qua Webhook Apps Script.[/bold green]")
+                except Exception as ex:
+                    console.print(f"[bold red]❌ Lỗi cập nhật: {ex}[/bold red]")
 
 
 @app.command()
@@ -590,8 +658,11 @@ def auth_youtube(
 
     secret_path = Path(secret_file)
     if not secret_path.exists():
-        console.print(f"[bold red]❌ Không tìm thấy file: {secret_file}[/bold red]")
-        return
+        if (Path("config") / secret_file).exists():
+            secret_path = Path("config") / secret_file
+        else:
+            console.print(f"[bold red]❌ Không tìm thấy file: {secret_file}[/bold red]")
+            return
 
     safe_name = secret_path.stem.replace("client_secret_", "").replace("_client_secret", "")
     token_file = f"config/tokens/youtube_{safe_name}.json"
@@ -617,6 +688,80 @@ def auth_youtube(
         with open(config_path, "w", encoding="utf-8") as f:
             json.dump(ch_data, f, ensure_ascii=False, indent=2)
         console.print(f"[bold green]✅ Đã tự động đăng ký kênh '{channel_name}' vào config/youtube_channels.json![/bold green]")
+
+
+@app.command()
+def generate_schedule(
+    start_time: str = typer.Option("07:30", help="Start time in HH:MM format"),
+    end_time: str = typer.Option("20:30", help="End time in HH:MM format"),
+    all_brands: bool = typer.Option(True, "--all-brands", help="Generate schedule for all eligible brands"),
+):
+    """Sinh mốc giờ ngẫu nhiên rải đều từ 07:30 đến 20:30 cho tất cả các Kênh/Brand và cập nhật lên Tab Status."""
+    import random, requests
+    from config import settings
+
+    webhook_url = getattr(settings, "GOOGLE_SHEET_WEBHOOK_URL", "")
+    if not webhook_url:
+        console.print("[bold red]❌ Lỗi: Chưa cấu hình GOOGLE_SHEET_WEBHOOK_URL trong .env[/bold red]")
+        return
+
+    s_h, s_m = map(int, start_time.split(":"))
+    e_h, e_m = map(int, end_time.split(":"))
+    start_min = s_h * 60 + s_m
+    end_min = e_h * 60 + e_m
+
+    brand_platforms = [
+        ("Hiệu giày Hải Nancy", ["fb", "yt", "ig"]),
+        ("Mua Chuẩn Xài Lâu", ["fb", "yt"]),
+        ("Macadamia Hải Nancy", ["fb", "yt"]),
+        ("Ở Đà Lạt vậy thôi", ["fb", "yt"]),
+        ("Yen Handmade Leather", ["fb"]),
+        ("YenYen Deals", ["fb"]),
+        ("Elegant Steps", ["fb"]),
+    ]
+
+    total_slots = sum(len(p) for _, p in brand_platforms)
+    
+    # Generate non-overlapping time slots
+    step = max(15, (end_min - start_min) // (total_slots + 2))
+    available_times = list(range(start_min, end_min - 15, step))
+    random.shuffle(available_times)
+    selected_times = sorted(available_times[:total_slots])
+    random.shuffle(selected_times)
+
+    time_idx = 0
+    console.print(f"\n[bold cyan]🎲 ĐÃ SINH LỊCH NGẪU NHIÊN CHO TẤT CẢ KÊNH CÓ THỂ ĐĂNG ({start_time} - {end_time}):[/bold cyan]\n")
+
+    for brand_name, platforms in brand_platforms:
+        times_payload = {"action": "update_brand_schedule", "brand": brand_name}
+        summary_str = []
+        for p in platforms:
+            t_min = selected_times[time_idx]
+            time_idx += 1
+            t_str = f"{t_min // 60:02d}:{t_min % 60:02d}"
+            times_payload[f"times_{p}"] = t_str
+            p_label = "📘 FB" if p == "fb" else ("🔴 YT" if p == "yt" else "📸 IG")
+            summary_str.append(f"{p_label}: [bold green]{t_str}[/bold green]")
+
+        console.print(f"📌 [bold yellow]{brand_name:<22}[/bold yellow] ➡️  " + "  |  ".join(summary_str))
+
+        try:
+            from core.sheet_client import GoogleSheetDirectClient
+            sc = GoogleSheetDirectClient()
+            sc.update_brand_schedule(
+                brand=brand_name,
+                times_fb=times_payload.get("times_fb"),
+                times_yt=times_payload.get("times_yt"),
+                times_ig=times_payload.get("times_ig"),
+            )
+        except Exception as e:
+            if webhook_url:
+                try:
+                    requests.post(webhook_url, json=times_payload, timeout=20)
+                except Exception:
+                    pass
+
+    console.print("\n[bold green]🎉 HOÀN TẤT! Đã sinh và cập nhật lịch ngẫu nhiên mới nhất lên Google Sheet Tab Status qua Sheets API v4![/bold green]\n")
 
 
 if __name__ == "__main__":

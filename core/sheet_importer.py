@@ -237,29 +237,27 @@ class SmartGoogleSheetImporter:
 
 
 def trigger_apps_script_sync() -> bool:
-    """Trigger Google Apps Script Webhook action 'sync_input_tabs' to aggregate Input Tabs into Master_Post."""
+    """Synchronize input tabs directly to Master tab using Service Account API v4 (with Webhook fallback)."""
+    try:
+        from core.sheet_client import GoogleSheetDirectClient
+        client = GoogleSheetDirectClient()
+        print("⚡ Đang gom Tab đầu vào & xóa dòng thừa trực tiếp qua Google Sheets API v4 (Service Account)...")
+        res = client.sync_input_tabs_to_master()
+        print(f"✅ Đồng bộ trực tiếp thành công! Tổng số dòng: {res.get('total_synced', 0)}")
+        return True
+    except Exception as e:
+        logger.warning(f"Direct API sync failed, falling back to Webhook: {e}")
+
     webhook_url = getattr(settings, "GOOGLE_SHEET_WEBHOOK_URL", None)
     if not webhook_url:
-        print("⚠️ Chưa cấu hình GOOGLE_SHEET_WEBHOOK_URL trong .env")
         return False
 
     try:
-        print("📡 Đang gửi tín hiệu sang Google Apps Script để gom Tab & xóa dòng thừa...")
         resp = requests.post(webhook_url, json={"action": "sync_input_tabs"}, timeout=30)
         if resp.status_code == 200 and "success" in resp.text:
-            print(f"✅ Apps Script phản hồi thành công: {resp.text[:150]}")
             return True
-        
-        # Fallback to GET if POST returned HTML error
-        sync_url = webhook_url if "?action=" in webhook_url else f"{webhook_url}?action=sync_input_tabs"
-        resp_get = requests.get(sync_url, timeout=30)
-        if resp_get.status_code == 200 and "success" in resp_get.text:
-            print(f"✅ Apps Script phản hồi thành công (qua GET): {resp_get.text[:150]}")
-            return True
-        else:
-            print(f"⚠️ Webhook Apps Script phản hồi: {resp.text[:150]}")
-    except Exception as e:
-        print(f"⚠️ Không thể kích hoạt Webhook Apps Script: {e}")
+    except Exception:
+        pass
     return False
 
 

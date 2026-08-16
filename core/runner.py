@@ -155,6 +155,11 @@ class JobRunner:
                             is_configured = connector.authenticate()
                         else:
                             is_configured = True
+                    elif platform == "instagram" and creds.get("access_token"):
+                        connector.access_token = creds["access_token"]
+                        if creds.get("instagram_account_id"):
+                            connector.instagram_account_id = creds["instagram_account_id"]
+                        is_configured = True
             else:
                 # Nếu brand_name là None, kiểm tra xem connector đã có cấu hình mặc định (hoặc mock) chưa
                 if hasattr(connector, 'access_token') and connector.access_token:

@@ -288,28 +288,17 @@ class MasterSheetExporter:
 
         logger.info(f"Successfully exported {len(records)} jobs to Master Sheet CSV: {self.output_csv}")
 
-        # Post directly to Google Sheet Webhook online in 1 superfast batch call
-        webhook_url = getattr(settings, "GOOGLE_SHEET_WEBHOOK_URL", None)
-        if webhook_url and records:
-            try:
-                import requests
-                
-                if only_job_ids:
-                    # Chế độ cập nhật từng dòng (không xóa bảng)
-                    records_to_send = [r for idx, r in enumerate(records) if rows[idx]["id"] in only_job_ids]
-                    payload = {"action": "update_rows", "records": records_to_send}
-                else:
-                    # Chế độ đồng bộ toàn bộ bảng
-                    payload = {"action": "clear_and_upsert", "records": records}
-                    
-                resp = requests.post(webhook_url, json=payload, timeout=30)
-                if resp.status_code == 200:
-                    logger.info(f"Successfully synced {len(payload['records'])} records ({payload['action']}) to Master Google Sheet Online! 🚀")
-            except Exception as e:
-                logger.warning(f"Could not post to Google Sheet Webhook: {e}")
-
-
-
+        # Post directly to Google Sheet Online via Service Account API v4
+        try:
+            from core.sheet_client import GoogleSheetDirectClient
+            client = GoogleSheetDirectClient()
+            if only_job_ids:
+                records_to_send = [r for idx, r in enumerate(records) if rows[idx]["id"] in only_job_ids]
+                client.update_master_rows(records_to_send)
+            else:
+                client.sync_input_tabs_to_master()
+            logger.info("Successfully synced records to Master Google Sheet Online via API v4! 🚀")
+        except Exception as e:
+            logger.warning(f"Could not sync to Google Sheet via Direct API: {e}")
 
         return self.output_csv
-

@@ -135,7 +135,7 @@ QUY TẮC BẮT BUỘC:
    - "facebook": Bài viết Facebook hay, mô tả đặc tính + 3-5 hashtags.
    - "youtube": Bài viết YouTube Shorts (2 dòng đầu có tên SP, tuyệt đối KHÔNG chứa link sản phẩm, có #Shorts + 3 hashtags).
    - "instagram": Bài viết Instagram phong cách thẩm mỹ + 10-15 hashtags hot.
-   - "tiktok": Bài viết TikTok dài, chi tiết, giật gân, giữ chân người xem + 3-5 hashtags.
+   - "tiktok": Bài viết TikTok dài, chi tiết, cực kỳ cuốn hút, giật gân, phân tích ưu điểm sản phẩm để giữ chân người xem lâu + BẮT BUỘC CHÈN ĐÚNG CHÍNH XÁC 5 HASHTAGS LIÊN QUAN TRỰC TIẾP TỚI TÊN SẢN PHẨM VÀ NGÀNH HÀNG CỦA BÀI VIẾT Ở CUỐI BÀI.
    - "shopee": TỔNG ĐỘ DÀI TOÀN BỘ BÀI VIẾT KỂ CẢ HASHTAG PHẢI DƯỚI 150 KÝ TỰ (< 150 chars total). Bắt buộc chứa 4 tags này ở cuối: #shopeevideo #luotvuimualien #shopeecreator {cat_tag}.
    - "zalo": Bài viết Zalo bán hàng + 3-5 hashtags (giống Facebook).
 

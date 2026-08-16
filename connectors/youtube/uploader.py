@@ -4,6 +4,7 @@ Implements Google API Client Resumable Upload protocol for YouTube Data API v3.
 """
 import time
 import logging
+import re
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -28,8 +29,15 @@ class YouTubeUploader:
         file_size = path.stat().st_size
         logger.info(f"Starting YouTube Resumable Upload for '{path.name}' ({file_size} bytes)...")
 
+        # Ensure title is non-empty and strictly <= 95 chars (YouTube limit is 100)
+        title_text = (metadata.title or "").strip()
+        title_text = re.sub(r"[<>]", "", title_text)
+        if not title_text:
+            title_text = "Video"
+        elif len(title_text) > 95:
+            title_text = title_text[:92].strip() + "..."
+
         # Ensure #Shorts tag is present in description or title for YouTube Shorts indexing
-        title_text = metadata.title
         desc_text = metadata.description or ""
         if "#shorts" not in title_text.lower() and "#shorts" not in desc_text.lower():
             desc_text = f"{desc_text}\n\n#Shorts".strip()
