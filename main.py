@@ -192,9 +192,6 @@ def process_queue(
     def norm_text(s: str) -> str:
         return unicodedata.normalize('NFC', s.strip()) if s else ""
 
-    master_url = getattr(settings, "MASTER_SHEET_URL", "")
-    webhook_url = getattr(settings, "GOOGLE_SHEET_WEBHOOK_URL", "")
-
     from core.sheet_client import GoogleSheetDirectClient
     try:
         sc = GoogleSheetDirectClient()
@@ -272,13 +269,13 @@ def process_queue(
     if selected_brand:
         console.print(f"[bold green]🎯 Thương hiệu đã chọn: '{selected_brand}'[/bold green]")
     else:
-        console.print("[bold dim]🎯 Chế độ: Đăng ngẫu nhiên bài của bất kỳ Brand nào.[/bold dim]")
+        console.print("[bold dim]🎯 Chế độ: Đăng bài tuần tự từ trên xuống của bất kỳ Brand nào.[/bold dim]")
 
-    # Select mode: 1) Random vs 2) Specific job_id
+    # Select mode: 1) Top-to-Bottom FIFO vs 2) Specific job_id
     target_job_id = norm_text(job_id)
     if not target_job_id:
         console.print("\n[bold cyan]📌 Chọn phương thức tìm bài viết để kiểm duyệt:[/bold cyan]")
-        console.print("  [bold yellow]1[/bold yellow]) Rút NGẪU NHIÊN 1 bài đang ở trạng thái 'pending'")
+        console.print("  [bold yellow]1[/bold yellow]) Lấy bài ĐẦU TIÊN từ trên xuống (Tuần tự theo thời gian)")
         console.print("  [bold yellow]2[/bold yellow]) Nhập mã 'job_id' cụ thể")
         from rich.prompt import Prompt
         mode_choice = Prompt.ask("👉 Vui lòng chọn (1-2)", choices=["1", "2"], default="1", show_choices=False)
@@ -338,8 +335,8 @@ def process_queue(
             console.print(f"[bold green]✨ Không có bài nào đang ở trạng thái 'pending'{brand_msg} cho kênh [{platform_name}] trên Tab Master.[/bold green]")
             return
 
-        # Draw 1 random job from matching rows
-        selected_row = random.choice(matching_rows)
+        # Pick the FIRST job in order from top to bottom (FIFO)
+        selected_row = matching_rows[0]
         pending_rows = [selected_row]
 
     from core.queue import JobQueue
@@ -436,12 +433,11 @@ def process_queue(
                 from core.sheet_client import GoogleSheetDirectClient
                 sc = GoogleSheetDirectClient()
                 sc.update_master_rows([updated_rec])
+                for p in active_platforms:
+                    b_name = brand_map.get(p) or r.get(f"brand_{p}") or r.get("brand_fb") or "Default"
+                    sc.record_post_timestamp(brand=b_name, platform=p)
             except Exception as ex:
-                if webhook_url:
-                    try:
-                        requests.post(webhook_url, json={"action": "update_rows", "records": [updated_rec]}, timeout=15)
-                    except Exception:
-                        pass
+                console.print(f"[bold red]❌ Lỗi cập nhật Tab Master: {ex}[/bold red]")
 
             processed += 1
         elif choice == "e":
@@ -456,11 +452,7 @@ def process_queue(
                 sc = GoogleSheetDirectClient()
                 sc.update_master_rows([updated_rec])
             except Exception as ex:
-                if webhook_url:
-                    try:
-                        requests.post(webhook_url, json={"action": "update_rows", "records": [updated_rec]}, timeout=15)
-                    except Exception:
-                        pass
+                console.print(f"[bold red]❌ Lỗi cập nhật Tab Master: {ex}[/bold red]")
         else:
             console.print("[dim]Đã bỏ qua bài này. Trạng thái giữ nguyên 'pending'.[/dim]")
 
@@ -521,13 +513,6 @@ def rewrite_needs_edit():
     from config import settings
     import requests, io, csv, json
 
-    master_url = getattr(settings, "MASTER_SHEET_URL", "")
-    webhook_url = getattr(settings, "GOOGLE_SHEET_WEBHOOK_URL", "")
-
-    if not master_url or not webhook_url:
-        console.print("[bold red]❌ Lỗi: Chưa cấu hình MASTER_SHEET_URL hoặc GOOGLE_SHEET_WEBHOOK_URL trong .env[/bold red]")
-        return
-
     from core.sheet_client import GoogleSheetDirectClient
     console.print("[bold cyan]📥 Đang đọc dữ liệu mới nhất từ Tab Master trên Google Sheet...[/bold cyan]")
     try:
@@ -586,7 +571,7 @@ def rewrite_needs_edit():
                 
                 cur_status = updated_rec.get(f"status_{p}", "").strip().lower()
                 if cur_status == "needs_edit" or not cur_status:
-                    if p in ["tt", "shopee", "zalo"]:
+                    if p in ["shopee", "zalo"]:
                         updated_rec[f"status_{p}"] = "manual_pending"
                     else:
                         updated_rec[f"status_{p}"] = "pending"
@@ -602,13 +587,7 @@ def rewrite_needs_edit():
             sc.update_master_rows(updated_records)
             console.print(f"[bold green]🎉 Hoàn tất! Đã cập nhật {len(updated_records)} bài trực tiếp lên Google Sheet Tab Master qua Sheets API v4.[/bold green]")
         except Exception as e:
-            if webhook_url:
-                try:
-                    res = requests.post(webhook_url, json={"action": "update_rows", "records": updated_records}, timeout=30)
-                    if res.status_code == 200:
-                        console.print(f"[bold green]🎉 Hoàn tất! Đã cập nhật {len(updated_records)} bài qua Webhook Apps Script.[/bold green]")
-                except Exception as ex:
-                    console.print(f"[bold red]❌ Lỗi cập nhật: {ex}[/bold red]")
+            console.print(f"[bold red]❌ Lỗi cập nhật Tab Master: {e}[/bold red]")
 
 
 @app.command()
@@ -688,14 +667,10 @@ def generate_schedule(
     end_time: str = typer.Option("20:30", help="End time in HH:MM format"),
     all_brands: bool = typer.Option(True, "--all-brands", help="Generate schedule for all eligible brands"),
 ):
-    """Sinh mốc giờ ngẫu nhiên rải đều từ 07:30 đến 20:30 cho tất cả các Kênh/Brand và cập nhật lên Tab Status."""
-    import random, requests
-    from config import settings
-
-    webhook_url = getattr(settings, "GOOGLE_SHEET_WEBHOOK_URL", "")
-    if not webhook_url:
-        console.print("[bold red]❌ Lỗi: Chưa cấu hình GOOGLE_SHEET_WEBHOOK_URL trong .env[/bold red]")
-        return
+    """Sinh mốc giờ ngẫu nhiên rải đều từ 07:30 đến 20:30 cho tất cả các Kênh/Brand và cập nhật lên Tab Status qua Direct API."""
+    import random
+    from core.sheet_client import GoogleSheetDirectClient
+    from core.account_manager import AccountManager
 
     s_h, s_m = map(int, start_time.split(":"))
     e_h, e_m = map(int, end_time.split(":"))
@@ -760,7 +735,6 @@ def generate_schedule(
         console.print(f"📌 [bold yellow]{brand_name:<22}[/bold yellow] ➡️  " + "  |  ".join(summary_str))
 
         try:
-            from core.sheet_client import GoogleSheetDirectClient
             sc = GoogleSheetDirectClient()
             sc.update_brand_schedule(
                 brand=brand_name,
@@ -770,11 +744,7 @@ def generate_schedule(
                 times_tt=times_payload.get("times_tt"),
             )
         except Exception as e:
-            if webhook_url:
-                try:
-                    requests.post(webhook_url, json=times_payload, timeout=20)
-                except Exception:
-                    pass
+            console.print(f"[bold red]❌ Lỗi cập nhật lịch brand '{brand_name}': {e}[/bold red]")
 
     console.print("\n[bold green]🎉 HOÀN TẤT! Đã sinh và cập nhật lịch ngẫu nhiên mới nhất lên Google Sheet Tab Status qua Sheets API v4![/bold green]\n")
 
@@ -893,11 +863,189 @@ def tiktok_post(
             updated_rec = dict(target)
             updated_rec["status_tt"] = "published"
             sc.update_master_rows([updated_rec])
+            sc.record_post_timestamp(brand=brand_tt, platform="tt")
             console.print(f"[bold green]🎉 Hoàn tất! Đã đăng thành công lên TikTok và cập nhật status_tt = 'published' trên Google Sheet![/bold green]\n")
         else:
             console.print(f"[bold red]❌ Đăng bài không thành công: {res}[/bold red]\n")
     except Exception as e:
         console.print(f"[bold red]❌ Lỗi khi đăng TikTok cho '{brand_tt}': {e}[/bold red]\n")
+
+
+@app.command()
+def auto_post_active(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Giả lập không thực sự gọi API / browser"),
+    brand: str = typer.Option("", "--brand", help="Chỉ định đăng cho 1 Brand cụ thể (để trống để đăng cho tất cả Brand đã sẵn sàng)"),
+    limit_per_brand: int = typer.Option(1, "--limit", help="Số lượng video đăng cho mỗi Brand (mặc định: 1)"),
+):
+    """🚀 ĐĂNG TỰ ĐỘNG 1-CLICK: Tự động đăng video cho các Kênh/Brand ĐÃ HOÀN TẤT THIẾT LẬP TOKEN/COOKIE."""
+    mode = "DRY-RUN" if dry_run else "LIVE"
+    console.print(f"\n[bold green]🚀 KHỞI CHẠY ĐĂNG TỰ ĐỘNG 1-CLICK (Mode: {mode})[/bold green]")
+    console.print("[dim]Chỉ đăng cho các Kênh và Nền tảng ĐÃ SẴN SÀNG Token / Cookie...[/dim]\n")
+
+    from pathlib import Path
+    from core.account_manager import AccountManager
+    from core.sheet_client import GoogleSheetDirectClient
+    from connectors.base import PostMetadata
+    from connectors.facebook import FacebookConnector
+    from connectors.youtube import YouTubeConnector
+    from connectors.instagram import InstagramConnector
+    from connectors.tiktok import TikTokBrowserConnector
+
+    mgr = AccountManager()
+    all_brands = [
+        "Hiệu giày Hải Nancy",
+        "Mua Chuẩn Xài Lâu",
+        "Macadamia Hải Nancy",
+        "Ở Đà Lạt vậy thôi",
+        "Yen Handmade Leather",
+        "YenYen Deals",
+        "Elegant Steps",
+    ]
+
+    target_brands = [brand] if brand else all_brands
+
+    # Filter only brands that have at least 1 active platform
+    ready_brands_map = {}
+    for b in target_brands:
+        active_p = mgr.get_active_platforms_for_brand(b)
+        if active_p:
+            ready_brands_map[b] = active_p
+
+    if not ready_brands_map:
+        console.print("[bold yellow]⚠️ Không tìm thấy Brand nào có Token / Cookie sẵn sàng![/bold yellow]")
+        return
+
+    console.print(f"[bold cyan]🔍 Tìm thấy {len(ready_brands_map)} Thương hiệu đã sẵn sàng thiết lập:[/bold cyan]")
+    for b, plats in ready_brands_map.items():
+        p_labels = []
+        for p in plats:
+            p_labels.append("📘 FB" if p == "fb" else ("🔴 YT" if p == "yt" else ("📸 IG" if p == "ig" else "🎬 TT")))
+        console.print(f"  🏢 [bold yellow]{b:<22}[/bold yellow] ➡️  " + "  ".join(p_labels))
+
+    console.print("\n[bold cyan]📥 Đang đọc dữ liệu từ Tab Master trên Google Sheet...[/bold cyan]")
+    sc = GoogleSheetDirectClient()
+    rows = sc.fetch_all_records("Master")
+
+    total_posted = 0
+
+    for b, active_platforms in ready_brands_map.items():
+        console.print(f"\n==================================================")
+        console.print(f"🏢 ĐANG XỬ LÝ BRAND: [bold yellow]{b}[/bold yellow]")
+        console.print(f"==================================================")
+
+        brand_posted_count = 0
+
+        # Process each active platform independently so that every ready channel gets 1 video posted
+        for p in active_platforms:
+            p_label = "📘 Facebook Reels" if p == "fb" else ("🔴 YouTube Shorts" if p == "yt" else ("📸 Instagram Reels" if p == "ig" else "🎬 TikTok Studio"))
+            console.print(f"\n--- 🚀 Đang tìm bài cho nền tảng: [bold cyan]{p_label}[/bold cyan] ---")
+
+            # Find the FIRST candidate row for this brand where status_<p> == 'pending' and video_path is valid
+            candidate = None
+            for r in rows:
+                col_brand = r.get(f"brand_{p}", "").strip() or r.get("brand_fb", "").strip()
+                if col_brand.lower() != b.lower():
+                    continue
+
+                st = (r.get(f"status_{p}") or "").strip().lower()
+                if st != "pending":
+                    continue
+
+                v_path = (r.get("video_path") or "").strip()
+                if not v_path or not Path(v_path).exists():
+                    continue
+
+                candidate = r
+                break
+
+            if not candidate:
+                console.print(f"  ⏩ [{p.upper()}]: Không tìm thấy bài nào đang 'pending' có video hợp lệ cho '{b}'.")
+                continue
+
+            j_id = candidate.get("job_id")
+            title = candidate.get("title", "")
+            video_path = candidate.get("video_path", "")
+            caption = candidate.get(f"caption_{p}") or title
+
+            console.print(f"  📌 [bold yellow]Job #{j_id}:[/bold yellow] {title}")
+            console.print(f"  🎬 Video: [dim]{video_path}[/dim]")
+            console.print(f"  🚀 Đang đăng [{p.upper()}]...")
+
+            if dry_run:
+                console.print(f"     ✅ [DRY-RUN] Giả lập đăng thành công [{p.upper()}]!")
+                candidate[f"status_{p}"] = "published"
+                brand_posted_count += 1
+                continue
+
+            # Live upload execution
+            try:
+                if p == "fb":
+                    fb_creds = mgr.get_brand_credentials(b, "facebook")
+                    fb_conn = FacebookConnector()
+                    fb_conn.page_id = fb_creds.get("page_id")
+                    fb_conn.access_token = fb_creds.get("access_token")
+                    meta = PostMetadata(title=title, description=caption)
+                    res = fb_conn.upload_video(video_path=video_path, metadata=meta)
+                    
+                    candidate["status_fb"] = "published"
+                    updated_row = dict(candidate)
+                    sc.update_master_rows([updated_row])
+                    sc.record_post_timestamp(brand=b, platform="fb")
+                    console.print(f"     ✅ Đăng Facebook thành công: {res.get('post_id', 'OK')}")
+                    brand_posted_count += 1
+
+                elif p == "yt":
+                    yt_creds = mgr.get_brand_credentials(b, "youtube")
+                    yt_conn = YouTubeConnector()
+                    from pathlib import Path
+                    yt_conn.token_path = Path(yt_creds.get("token_path"))
+                    if hasattr(yt_conn, 'authenticate') and callable(yt_conn.authenticate):
+                        yt_conn.authenticate()
+                    meta = PostMetadata(title=title, description=caption)
+                    res = yt_conn.upload_video(video_path=video_path, metadata=meta)
+                    
+                    candidate["status_yt"] = "published"
+                    updated_row = dict(candidate)
+                    sc.update_master_rows([updated_row])
+                    sc.record_post_timestamp(brand=b, platform="yt")
+                    console.print(f"     ✅ Đăng YouTube Shorts thành công: {res.get('video_url', 'OK')}")
+                    brand_posted_count += 1
+
+                elif p == "ig":
+                    ig_creds = mgr.get_brand_credentials(b, "instagram")
+                    ig_conn = InstagramConnector()
+                    ig_conn.access_token = ig_creds.get("access_token")
+                    ig_conn.instagram_account_id = ig_creds.get("instagram_account_id")
+                    meta = PostMetadata(title=title, description=caption)
+                    res = ig_conn.upload_video(video_path=video_path, metadata=meta)
+                    
+                    candidate["status_ig"] = "published"
+                    updated_row = dict(candidate)
+                    sc.update_master_rows([updated_row])
+                    sc.record_post_timestamp(brand=b, platform="ig")
+                    console.print(f"     ✅ Đăng Instagram Reels thành công: {res.get('video_url', 'OK')}")
+                    brand_posted_count += 1
+
+                elif p == "tt":
+                    tt_conn = TikTokBrowserConnector(brand_name=b)
+                    meta = PostMetadata(title=title, description=caption)
+                    res = tt_conn.upload_video(video_path=video_path, metadata=meta)
+                    if res.get("status") == "success":
+                        candidate["status_tt"] = "published"
+                        updated_row = dict(candidate)
+                        sc.update_master_rows([updated_row])
+                        sc.record_post_timestamp(brand=b, platform="tt")
+                        console.print(f"     ✅ Đăng TikTok Studio thành công!")
+                        brand_posted_count += 1
+                    else:
+                        console.print(f"     ❌ Đăng TikTok thất bại: {res}")
+            except Exception as ex:
+                console.print(f"     ❌ Lỗi khi đăng [{p.upper()}]: {ex}")
+
+        if brand_posted_count > 0:
+            total_posted += 1
+
+    console.print(f"\n[bold green]🎉 HOÀN TẤT ĐĂNG TỰ ĐỘNG! Đã xuất bản video cho {total_posted} thương hiệu sẵn sàng![/bold green]\n")
 
 
 @app.command()

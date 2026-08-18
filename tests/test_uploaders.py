@@ -96,17 +96,21 @@ def test_instagram_reels_upload_success(tmp_path):
     uploader = InstagramUploader(instagram_account_id="ig_123", access_token="fake_token")
 
     with patch("requests.post") as mock_post, patch("requests.get") as mock_get:
-        # Create container response
+        # 1. Init container response
         res_container = MagicMock()
         res_container.status_code = 200
-        res_container.json.return_value = {"id": "container_777"}
+        res_container.json.return_value = {"id": "container_777", "uri": "https://rupload.facebook.com/ig-reels-upload/v19.0/container_777"}
 
-        # Publish container response
+        # 2. Binary rupload response
+        res_rupload = MagicMock()
+        res_rupload.status_code = 200
+
+        # 3. Publish container response
         res_publish = MagicMock()
         res_publish.status_code = 200
         res_publish.json.return_value = {"id": "ig_media_888"}
 
-        mock_post.side_effect = [res_container, res_publish]
+        mock_post.side_effect = [res_container, res_rupload, res_publish]
 
         # Poll status response
         res_status = MagicMock()
@@ -114,7 +118,7 @@ def test_instagram_reels_upload_success(tmp_path):
         res_status.json.return_value = {"status_code": "FINISHED", "id": "container_777"}
         mock_get.return_value = res_status
 
-        result = uploader.upload(str(dummy_video), metadata, video_url="https://example.com/demo.mp4")
+        result = uploader.upload(str(dummy_video), metadata)
 
         assert result["status"] == "success"
         assert result["post_id"] == "ig_media_888"

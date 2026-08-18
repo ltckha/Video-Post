@@ -161,21 +161,31 @@ TRẢ VỀ CHỈ DUY NHẤT 1 OBJECT JSON HỢP LỆ (KHÔNG THÊM CÂU TỪ NÀ
             "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1500},
         }
 
-        res = requests.post(url, headers=headers, json=payload, timeout=20)
-        if res.status_code == 200:
-            data = res.json()
-            candidates = data.get("candidates", [])
-            if candidates:
-                text_response = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                json_match = re.search(r"\{.*\}", text_response, re.DOTALL)
-                if json_match:
-                    result = json.loads(json_match.group(0))
-                    if "shopee" in result and len(result["shopee"]) > 150:
-                        shopee_tags = f"#shopeevideo #luotvuimualien #shopeecreator {cat_tag}"
-                        result["shopee"] = f"{title[:80]} {shopee_tags}"[:150]
-                    return {k: self.clean_cta(v) for k, v in result.items()}
-        else:
-            logger.error(f"Gemini API returned status HTTP {res.status_code}: {res.text}")
+        models_to_try = [self.model_name, "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.7-flash"]
+        seen_models = set()
+        unique_models = [m for m in models_to_try if m and not (m in seen_models or seen_models.add(m))]
+
+        for model in unique_models:
+            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+            url = f"{endpoint}?key={self.api_key}"
+            try:
+                res = requests.post(url, headers=headers, json=payload, timeout=20)
+                if res.status_code == 200:
+                    data = res.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        text_response = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                        json_match = re.search(r"\{.*\}", text_response, re.DOTALL)
+                        if json_match:
+                            result = json.loads(json_match.group(0))
+                            if "shopee" in result and len(result["shopee"]) > 150:
+                                shopee_tags = f"#shopeevideo #luotvuimualien #shopeecreator {cat_tag}"
+                                result["shopee"] = f"{title[:80]} {shopee_tags}"[:150]
+                            return {k: self.clean_cta(v) for k, v in result.items()}
+                else:
+                    logger.warning(f"Gemini API model '{model}' trả về status HTTP {res.status_code}: {res.text}. Thử model kế tiếp...")
+            except Exception as e:
+                logger.warning(f"Gemini API model '{model}' gặp ngoại lệ: {e}. Thử model kế tiếp...")
 
         return None
 

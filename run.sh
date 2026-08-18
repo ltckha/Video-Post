@@ -14,25 +14,33 @@ while true; do
     echo "=================================================="
     echo "  🚀 VIDEO-POST: BỘ CÔNG CỤ TỰ ĐỘNG ĐĂNG VIDEO 🚀"
     echo "=================================================="
-    echo " 1) ĐĂNG THẬT (Facebook / YouTube / Instagram / TikTok)"
-    echo " 2) Nhờ AI viết lại các bài cần chỉnh sửa (rewrite-needs-edit)"
-    echo " 3) Thêm Tab đầu vào mới trên Master Sheet (add-tab)"
-    echo " 4) Đồng bộ tất cả Tab Đầu Vào & AI Biên Soạn (sync-all-sources)"
-    echo " 5) Nạp Cookie TikTok từ file JSON Cookie-Editor (tiktok-import-cookies)"
+    echo " 1) 🚀 ĐĂNG TỰ ĐỘNG 1-CLICK (Đăng ngay các kênh đã sẵn sàng)"
+    echo " 2) Đăng thủ công theo kênh (Facebook / YouTube / Instagram / TikTok)"
+    echo " 3) Nhờ AI viết lại các bài cần chỉnh sửa (rewrite-needs-edit)"
+    echo " 4) Thêm Tab đầu vào mới trên Master Sheet (add-tab)"
+    echo " 5) Đồng bộ tất cả Tab Đầu Vào & AI Biên Soạn (sync-all-sources)"
+    echo " 6) Nạp Cookie TikTok từ file JSON Cookie-Editor (tiktok-import-cookies)"
     echo " 0) Thoát"
     echo "=================================================="
-    read -rp "👉 Vui lòng chọn (0-5): " choice
+    read -rp "👉 Vui lòng chọn (0-6): " choice
 
     case $choice in
         1)
             echo ""
-            echo "--- ĐĂNG THẬT BÀI VIẾT ---"
+            echo "--- 🚀 ĐĂNG TỰ ĐỘNG 1-CLICK (CÁC KÊNH ĐÃ SẴN SÀNG) ---"
+            $PYTHON_BIN main.py auto-post-active
+            echo ""
+            read -rp "Nhấn Enter để quay lại menu..."
+            ;;
+        2)
+            echo ""
+            echo "--- ĐĂNG THỦ CÔNG THEO NỀN TẢNG ---"
             echo "Chọn nền tảng bạn muốn đăng:"
             echo " 1) Facebook Reels"
             echo " 2) YouTube Shorts"
             echo " 3) Instagram Reels"
             echo " 4) TikTok Studio (Playwright Browser)"
-            echo " 5) Tất cả các kênh tự động (FB, YT, IG, TT)"
+            echo " 5) Đăng tự động tất cả các kênh sẵn sàng (1-Click)"
             read -rp "👉 Chọn nền tảng (1-5): " p_choice
             
             PLATFORM="all"
@@ -74,34 +82,36 @@ while true; do
                 esac
 
                 $PYTHON_BIN main.py tiktok-post --brand "$target_tt_brand"
+            elif [ "$PLATFORM" == "all" ]; then
+                $PYTHON_BIN main.py auto-post-active
             else
                 $PYTHON_BIN main.py process-queue --platform "$PLATFORM" --limit 1
             fi
             echo ""
             read -rp "Nhấn Enter để quay lại menu..."
             ;;
-        2)
+        3)
             echo ""
             echo "--- NHỜ AI VIẾT LẠI CÁC BÀI CẦN CHỈNH SỬA ---"
             $PYTHON_BIN main.py rewrite-needs-edit
             echo ""
             read -rp "Nhấn Enter để quay lại menu..."
             ;;
-        3)
+        4)
             echo ""
             echo "--- THÊM TAB ĐẦU VÀO MỚI TRÊN MASTER SHEET ---"
             $PYTHON_BIN main.py add-tab
             echo ""
             read -rp "Nhấn Enter để quay lại menu..."
             ;;
-        4)
+        5)
             echo ""
             echo "--- ĐỒNG BỘ & AI BIÊN SOẠN ---"
             $PYTHON_BIN main.py sync-all-sources
             echo ""
             read -rp "Nhấn Enter để quay lại menu..."
             ;;
-        5)
+        6)
             echo ""
             echo "=================================================="
             echo "  🍪 NẠP COOKIE TIKTOK CHO BRAND (TỪ FILE JSON)"

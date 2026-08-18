@@ -18,7 +18,7 @@ Hệ thống **Video-Post** là bộ công cụ tự động hóa E-Commerce đa
 - Tự động lọc chống trùng lặp dựa trên **Khóa chính Cột A** (`job_id`: Mã SP / Project ID) và đường dẫn video tuyệt đối (`video_path`).
 
 ### 2. Biên Soạn Nội Dung AI ([`core/ai_captioner.py`](file:///Users/khan/Developer/Video-Post/core/ai_captioner.py))
-- Kết nối trực tiếp với **Google Gemini 3.1 Flash Lite API** (`gemini-3.1-flash-lite`).
+- Kết nối trực tiếp với **Google Gemini API** (mặc định: `gemini-3.5-flash-lite`, hạn ngạch 500 RPD / 15 RPM, kèm tự động fallback `gemini-3.1-flash-lite` và `gemini-3.7-flash`).
 - Sinh bài viết tự động cho 6 nền tảng:
   - **Facebook**: Bài viết chi tiết + 3-5 hashtags (Không CTA).
   - **YouTube Shorts**: 2 dòng đầu có tên SP, KHÔNG để link + `#Shorts` + 3 hashtags.
@@ -28,11 +28,13 @@ Hệ thống **Video-Post** là bộ công cụ tự động hóa E-Commerce đa
   - **Zalo**: Bán hàng + 3-5 hashtags.
 
 ### 3. Đồng Bộ Trực Tiếp Tab Trung Tâm Master Sheet ([`core/sheet_client.py`](file:///Users/khan/Developer/Video-Post/core/sheet_client.py))
-- Kết nối trực tiếp qua **Google Sheets API v4** bằng chìa khóa Service Account ([`config/service_account.json`](file:///Users/khan/Developer/Video-Post/config/service_account.json)).
+- Kết nối trực tiếp qua **Google Sheets API v4** bằng chìa khóa Service Account ([`config/service_account.json`](file:///Users/khan/Developer/Video-Post/config/service_account.json)) — **Loại bỏ 100% Google Apps Script**.
+- **Cơ Chế Dynamic Header Mapping (100% Không dùng cột cố định)**: Tự động quét dòng 1 trên Google Sheet (`header_map = {normalize(h): col_idx}`) để xác định chính xác tọa độ cột cho từng trường dữ liệu, đảm bảo không bao giờ bị lệch cột.
 - Nạp/cập nhật mảng dữ liệu siêu tốc lên Tab **`Master`** trên Google Sheet với **20 Tiêu Đề Cột Tiếng Anh Ngắn Gọn**:
   `job_id`, `title`, `video_path`, `shopee_link`, `caption_fb`, `caption_yt`, `caption_ig`, `caption_tt`, `caption_shopee`, `caption_zalo`, `brand_fb`, `brand_yt`, `brand_ig`, `brand_tt`, `status_fb`, `status_yt`, `status_ig`, `status_tt`, `status_shopee`, `status_zalo`.
 
-### 4. Đăng Bài Tự Động
+### 4. Đăng Bài Tự Động (1-Click Multi-Platform Auto Post)
+- **1-Click Auto Post (`main.py auto-post-active`)**: Tự động phát hiện các Brand & Nền tảng đã hoàn tất thiết lập Token/Cookie (FB, YT, IG, TT). Tự động lấy 1 video `pending` và xuất bản ngay lập tức mà không cần hỏi lại, cập nhật đồng loạt `status = published` trên Google Sheet.
 - **Facebook Page**: Tự động đăng video dạng Reel 3 giai đoạn (Resumable Upload) với Token hạn dài nạp từ [`config/facebook_pages.json`](file:///Users/khan/Developer/Video-Post/config/facebook_pages.json).
 - **YouTube Shorts**: Tự động đăng qua YouTube Data API v3 với token đa kênh từ [`config/youtube_channels.json`](file:///Users/khan/Developer/Video-Post/config/youtube_channels.json).
 - **Instagram Reels**: Tự động tải lên qua Graph API Video Container từ [`connectors/instagram/uploader.py`](file:///Users/khan/Developer/Video-Post/connectors/instagram/uploader.py).

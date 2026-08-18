@@ -237,7 +237,7 @@ class SmartGoogleSheetImporter:
 
 
 def trigger_apps_script_sync() -> bool:
-    """Synchronize input tabs directly to Master tab using Service Account API v4 (with Webhook fallback)."""
+    """Synchronize input tabs directly to Master tab using Service Account API v4."""
     try:
         from core.sheet_client import GoogleSheetDirectClient
         client = GoogleSheetDirectClient()
@@ -246,37 +246,70 @@ def trigger_apps_script_sync() -> bool:
         print(f"✅ Đồng bộ trực tiếp thành công! Tổng số dòng: {res.get('total_synced', 0)}")
         return True
     except Exception as e:
-        logger.warning(f"Direct API sync failed, falling back to Webhook: {e}")
-
-    webhook_url = getattr(settings, "GOOGLE_SHEET_WEBHOOK_URL", None)
-    if not webhook_url:
+        logger.error(f"Direct API sync failed: {e}")
         return False
-
-    try:
-        resp = requests.post(webhook_url, json={"action": "sync_input_tabs"}, timeout=30)
-        if resp.status_code == 200 and "success" in resp.text:
-            return True
-    except Exception:
-        pass
-    return False
 
 
 def sync_all_sources(db_path: str = "video_post.db") -> int:
-    """Sync all connected input tabs into Master_Post via Apps Script and update local queue cache."""
-    # 1. Trigger Apps Script to aggregate Input Tabs into Master_Post and delete removed rows
+    """Sync all connected input tabs directly into Master tab via API v4 and update local queue cache."""
+    # 1. Trigger Service Account API v4 to aggregate Input Tabs into Master and clean removed rows
     trigger_apps_script_sync()
 
-    # 2. Fetch Master_Post tab and sync to local queue cache
-    master_url = getattr(settings, "MASTER_SHEET_URL", "")
-    if not master_url:
-        print("⚠️ Chưa cấu hình MASTER_SHEET_URL")
-        return 0
+    # 2. Fetch Master tab records directly via Google Sheets API v4
+    print("📥 Đang đọc dữ liệu mới nhất từ Tab Master qua Google Sheets API v4...")
+    try:
+        from core.sheet_client import GoogleSheetDirectClient
+        sc = GoogleSheetDirectClient()
+        records = sc.fetch_all_records("Master")
+        
+        queue = JobQueue(db_path=db_path)
+        imported_count = 0
+        for r in records:
+            job_id = str(r.get("job_id", "")).strip()
+            video_path = str(r.get("video_path", "")).strip()
+            if not job_id or not video_path:
+                continue
 
-    print("📥 Đang đọc dữ liệu mới nhất từ Tab Master...")
-    importer = SmartGoogleSheetImporter(sheet_url=master_url, db_path=db_path)
-    count = importer.import_to_queue(tab_name="Master", generate_ai=False)
-    print(f"✅ Đồng bộ hoàn tất! Tổng số bài đang có trên Master: {count}")
-    return count
+            title = str(r.get("title", "")).strip()
+            shopee_link = str(r.get("shopee_link", "")).strip()
+
+            target_platforms = ["facebook", "youtube", "instagram", "tiktok"]
+            platform_brand_map = {
+                "facebook": r.get("brand_fb") or "Default",
+                "youtube": r.get("brand_yt") or "Default",
+                "instagram": r.get("brand_ig") or "Default",
+                "tiktok": r.get("brand_tt") or "Default",
+            }
+            ai_captions = {
+                "facebook": r.get("caption_fb") or title,
+                "youtube": r.get("caption_yt") or title,
+                "instagram": r.get("caption_ig") or title,
+                "tiktok": r.get("caption_tt") or title,
+                "shopee": r.get("caption_shopee") or title,
+                "zalo": r.get("caption_zalo") or title,
+            }
+
+            queue.add_job(
+                video_path=video_path,
+                target_platforms=target_platforms,
+                title=title,
+                description=r.get("caption_fb") or title,
+                tags=[],
+                extra_options={
+                    "item_id": job_id,
+                    "platform_brand_map": platform_brand_map,
+                    "ai_captions": ai_captions,
+                    "affiliate_link": shopee_link,
+                }
+            )
+            imported_count += 1
+
+        print(f"✅ Đồng bộ hoàn tất! Tổng số bài đã nạp từ Master: {imported_count}")
+        return imported_count
+    except Exception as e:
+        logger.error(f"Error syncing Master records via Direct API: {e}")
+        print(f"❌ Lỗi đọc Tab Master: {e}")
+        return 0
 
 
 def format_caption_for_platform(platform: str, title: str, caption: str = "", affiliate_link: str = "") -> str:

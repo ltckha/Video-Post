@@ -41,15 +41,12 @@ class Settings(BaseSettings):
 
     # AI Engine Credentials
     GEMINI_API_KEY: Optional[str] = Field(default=None)
-    GEMINI_MODEL: str = Field(default="gemini-3.1-flash-lite")
+    GEMINI_MODEL: str = Field(default="gemini-3.5-flash-lite")
     GEMINI_RPM_DELAY: int = Field(default=4)
     GEMINI_MAX_RPD: int = Field(default=500)
 
-    # Master Sheet URL & Webhook
+    # Master Sheet URL (Direct API v4)
     MASTER_SHEET_URL: str = Field(default="https://docs.google.com/spreadsheets/d/1Xg67qhp1J_Izt7v5uDKRgKjdEZapX9giKJ_ym0OMJN4/")
-    GOOGLE_SHEET_WEBHOOK_URL: str = Field(
-        default="https://script.google.com/macros/s/AKfycbw0CdP4CTYLmUvOMMyShmbFoqBS1LlvV6aMQon4PIJ2d53AD1Gnk_7OcsD5ZFllOsBQ/exec"
-    )
 
     # Alerts
 
