@@ -61,7 +61,7 @@ while true; do
                 echo " 1) Hiệu giày Hải Nancy (✅ Đã nạp Cookie)"
                 echo " 2) Mua Chuẩn Xài Lâu (⚠️ Chưa nạp Cookie)"
                 echo " 3) Macadamia Hải Nancy (⚠️ Chưa nạp Cookie)"
-                echo " 4) Ở Đà Lạt vậy thôi (⚠️ Chưa nạp Cookie)"
+                echo " 4) Ờ Đà Lạt vậy thôi (⚠️ Chưa nạp Cookie)"
                 echo " 5) Yen Handmade Leather (⚠️ Chưa nạp Cookie)"
                 echo " 6) YenYen Deals (⚠️ Chưa nạp Cookie)"
                 echo " 7) Elegant Steps (⚠️ Chưa nạp Cookie)"
@@ -73,7 +73,7 @@ while true; do
                     1) target_tt_brand="Hiệu giày Hải Nancy" ;;
                     2) target_tt_brand="Mua Chuẩn Xài Lâu" ;;
                     3) target_tt_brand="Macadamia Hải Nancy" ;;
-                    4) target_tt_brand="Ở Đà Lạt vậy thôi" ;;
+                    4) target_tt_brand="Ờ Đà Lạt vậy thôi" ;;
                     5) target_tt_brand="Yen Handmade Leather" ;;
                     6) target_tt_brand="YenYen Deals" ;;
                     7) target_tt_brand="Elegant Steps" ;;
@@ -119,7 +119,7 @@ while true; do
             echo " 1) Hiệu giày Hải Nancy"
             echo " 2) Mua Chuẩn Xài Lâu"
             echo " 3) Macadamia Hải Nancy"
-            echo " 4) Ở Đà Lạt vậy thôi"
+            echo " 4) Ờ Đà Lạt vậy thôi"
             echo " 5) Yen Handmade Leather"
             echo " 6) YenYen Deals"
             echo " 7) Elegant Steps"
@@ -131,7 +131,7 @@ while true; do
                 1) target_brand="Hiệu giày Hải Nancy" ;;
                 2) target_brand="Mua Chuẩn Xài Lâu" ;;
                 3) target_brand="Macadamia Hải Nancy" ;;
-                4) target_brand="Ở Đà Lạt vậy thôi" ;;
+                4) target_brand="Ờ Đà Lạt vậy thôi" ;;
                 5) target_brand="Yen Handmade Leather" ;;
                 6) target_brand="YenYen Deals" ;;
                 7) target_brand="Elegant Steps" ;;

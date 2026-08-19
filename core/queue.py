@@ -62,10 +62,17 @@ class JobQueue:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
-            # Check if job with same video_path or same item_id exists
+            # Check if job with same item_id or same video_path exists (Idempotent Deduplication)
             existing_job = None
-            if video_path:
-                cursor.execute("SELECT * FROM jobs WHERE video_path = ?", (video_path,))
+            if item_id:
+                cursor.execute(
+                    "SELECT * FROM jobs WHERE results_json LIKE ? ORDER BY id DESC LIMIT 1",
+                    (f'%"item_id": "{item_id}"%',),
+                )
+                existing_job = cursor.fetchone()
+
+            if not existing_job and video_path:
+                cursor.execute("SELECT * FROM jobs WHERE video_path = ? ORDER BY id DESC LIMIT 1", (video_path,))
                 existing_job = cursor.fetchone()
 
             if existing_job:
@@ -74,13 +81,13 @@ class JobQueue:
                 cursor.execute(
                     """
                     UPDATE jobs
-                    SET target_platforms = ?, title = ?, description = ?, tags = ?, results_json = ?, updated_at = datetime('now', 'localtime')
+                    SET video_path = ?, target_platforms = ?, title = ?, description = ?, tags = ?, results_json = ?, updated_at = datetime('now', 'localtime')
                     WHERE id = ?
                 """,
-                    (platforms_str, title, description, tags_str, results_str, j_id),
+                    (video_path, platforms_str, title, description, tags_str, results_str, j_id),
                 )
                 conn.commit()
-                logger.info(f"Updated existing Job #{j_id} (Deduplicated by video_path/item_id): {title}")
+                logger.info(f"Updated existing Job #{j_id} (Deduplicated by item_id '{item_id}' / video_path): {title}")
                 return j_id
 
             # Insert new job if not found
@@ -125,7 +132,8 @@ class JobQueue:
                 """
                 SELECT * FROM jobs 
                 WHERE status IN ('partial', 'failed')
-                ORDER BY updated_at ASC 
+                AND attempts < 3
+                ORDER BY updated_at ASC
                 LIMIT ?
             """,
                 (limit,),
@@ -178,16 +186,28 @@ class JobQueue:
 
 
     def get_hourly_post_count(self, platform: str) -> int:
-        """Count successful posts for a platform within the last 1 hour for rate limiting."""
+        """Count successful posts for a platform within the last 1 hour for accurate rate limiting.
+        
+        Inspects results_json across both completed and partial jobs.
+        """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT COUNT(*) FROM jobs 
-                WHERE status = 'completed' 
-                AND target_platforms LIKE ?
-                AND updated_at >= datetime('now', '-1 hour', 'localtime')
-            """,
-                (f"%{platform}%",),
+                SELECT results_json FROM jobs 
+                WHERE updated_at >= datetime('now', '-1 hour', 'localtime')
+                AND results_json IS NOT NULL
+            """
             )
-            return cursor.fetchone()[0]
+            rows = cursor.fetchall()
+            count = 0
+            for r in rows:
+                if r[0]:
+                    try:
+                        res = json.loads(r[0])
+                        p_res = res.get(platform)
+                        if isinstance(p_res, dict) and (p_res.get("status") in ["published", "dry_run_success"] or p_res.get("post_id")):
+                            count += 1
+                    except Exception:
+                        pass
+            return count

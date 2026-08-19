@@ -74,6 +74,9 @@ class AICaptionGenerator:
         affiliate_link: str = "",
         style_prompt: str = "",
         current_captions: str = "",
+        product_usp: str = "",
+        target_audience: str = "",
+        brand_tone: str = "",
     ) -> Dict[str, str]:
         """Generate tailored captions for 6 platforms via Gemini API (or rule-based fallback)."""
         global DAILY_API_REQUEST_COUNT
@@ -81,7 +84,17 @@ class AICaptionGenerator:
 
         if self.api_key and DAILY_API_REQUEST_COUNT < self.max_rpd:
             try:
-                captions = self._call_gemini_api(title, raw_caption, affiliate_link, cat_tag, style_prompt, current_captions)
+                captions = self._call_gemini_api(
+                    title=title,
+                    raw_caption=raw_caption,
+                    affiliate_link=affiliate_link,
+                    cat_tag=cat_tag,
+                    style_prompt=style_prompt,
+                    current_captions=current_captions,
+                    product_usp=product_usp,
+                    target_audience=target_audience,
+                    brand_tone=brand_tone,
+                )
                 if captions and len(captions) == 6:
                     DAILY_API_REQUEST_COUNT += 1
                     logger.info(
@@ -105,6 +118,9 @@ class AICaptionGenerator:
         cat_tag: str,
         style_prompt: str = "",
         current_captions: str = "",
+        product_usp: str = "",
+        target_audience: str = "",
+        brand_tone: str = "",
     ) -> Optional[Dict[str, str]]:
         """Call Google Gemini API with model gemini-3.1-flash-lite or configured model."""
         endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent"
@@ -119,6 +135,13 @@ Mô tả gốc: {raw_caption}
 Link sản phẩm: {affiliate_link}
 Hashtag ngành hàng Shopee: {cat_tag}
 """
+        if product_usp:
+            prompt += f"Điểm nổi bật / USP sản phẩm: {product_usp}\n"
+        if target_audience:
+            prompt += f"Đối tượng mục tiêu (Target Audience): {target_audience}\n"
+        if brand_tone:
+            prompt += f"Tone giọng thương hiệu: {brand_tone}\n"
+
         if current_captions and style_prompt:
             prompt += f"""
 ĐÂY LÀ BẢN NHÁP CŨ DO BẠN VIẾT:

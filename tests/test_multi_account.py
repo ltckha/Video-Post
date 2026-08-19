@@ -20,7 +20,7 @@ def test_account_manager_facebook_pages_lookup(tmp_path):
     pages_file = tmp_path / "facebook_pages.json"
     dummy_pages = {
         "pages": {
-            "Ở Đà Lạt Vậy Thôi": {
+            "Ờ Đà Lạt vậy thôi": {
                 "page_id": "dalat_123",
                 "access_token": "token_dalat_abc",
                 "expires_at": "2099-12-31T23:59:59Z",
@@ -36,7 +36,7 @@ def test_account_manager_facebook_pages_lookup(tmp_path):
 
     mgr = AccountManager(fb_pages_file=pages_file)
 
-    creds_dalat = mgr.get_brand_credentials("Ở Đà Lạt Vậy Thôi", "facebook")
+    creds_dalat = mgr.get_brand_credentials("Ờ Đà Lạt vậy thôi", "facebook")
     assert creds_dalat["page_id"] == "dalat_123"
     assert creds_dalat["expires_at"] == "2099-12-31T23:59:59Z"
 
