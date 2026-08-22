@@ -110,6 +110,91 @@ class AICaptionGenerator:
         # Rule-based fallback if API key not set or limit reached or error occurs
         return self._generate_fallback_captions(title, raw_caption, affiliate_link, cat_tag)
 
+    def generate_tiktok_caption(
+        self,
+        title: str,
+        raw_caption: str = "",
+        brand_name: str = "",
+        product_usp: str = "",
+        target_audience: str = "",
+        brand_tone: str = "",
+    ) -> str:
+        """Generate a single, deeply engaging Storytelling caption exclusively for TikTok."""
+        global DAILY_API_REQUEST_COUNT
+        if self.api_key and DAILY_API_REQUEST_COUNT < self.max_rpd:
+            prompt = f"""
+Bạn là chuyên gia sáng tạo nội dung video ngắn và Storytelling hàng đầu trên TikTok Việt Nam.
+Hãy viết DUY NHẤT 1 bài viết TikTok thật dài, sâu sắc, giàu chi tiết, nghệ thuật và cuốn hút cho sản phẩm dưới đây:
+
+Tên sản phẩm: {title}
+Mô tả/Bối cảnh: {raw_caption}
+Thương hiệu: {brand_name}
+"""
+            if product_usp:
+                prompt += f"Điểm nổi bật / USP: {product_usp}\n"
+            if target_audience:
+                prompt += f"Đối tượng mục tiêu: {target_audience}\n"
+            if brand_tone:
+                prompt += f"Tone giọng: {brand_tone}\n"
+
+            prompt += """
+QUY TẮC BẮT BUỘC:
+1. TUYỆT ĐỐI KHÔNG thêm bất kỳ câu Kêu Gọi Mua Hàng / CTA nào (NHƯ: "Mua ngay tại...", "Bấm vào link...", "Sắm ngay...", "Link bio..."). Trong video đã có CTA rồi.
+2. TUYỆT ĐỐI KHÔNG nhắc tên các nền tảng khác như Shopee, Facebook, Lazada, v.v.
+3. BẮT BUỘC VIẾT THEO ĐÚNG VĂN PHONG VÀ BỐ CỤC BÀI MẪU TIÊU CHUẨN SAU ĐÂY:
+
+--- BÀI MẪU TIÊU CHUẨN TIKTOK (HÃY HỌC TẬP CHÍNH XÁC PHONG CÁCH NÀY CHO SẢN PHẨM HIỆN TẠI) ---
+“Một đôi giày cổ điển xứng đáng có thêm một hành trình mới.” 👞✨
+
+Đôi giày Brogue này đã bạc màu theo thời gian, nhưng chất da vẫn còn rất tốt. Thay vì thay mới, mình lựa chọn phục hồi bằng phương pháp nhuộm thủ công.
+
+✔ Làm sạch và xử lý bề mặt da
+✔ Pha màu phù hợp với màu gốc
+✔ Nhuộm từng lớp mỏng để màu lên tự nhiên
+✔ Hoàn thiện giúp đôi giày lấy lại vẻ lịch lãm
+
+💡 Mỗi công đoạn đều cần sự kiên nhẫn và tỉ mỉ. Chính điều đó tạo nên thành phẩm có chiều sâu, giữ được nét đẹp cổ điển của da thật thay vì một lớp sơn dày che phủ.
+
+Xem hết video để theo dõi hành trình hồi sinh của đôi giày Brogue từ cũ kỹ đến chỉn chu như mới nhé! 🔥
+
+#phuchoigiay #giayda #brogue #customgiay #leathercare
+--- HẾT BÀI MẪU ---
+
+Chỉ trả về trực tiếp nội dung bài viết TikTok (Không bọc trong JSON, không thêm lời chào hay giải thích gì khác).
+"""
+            headers = {"Content-Type": "application/json"}
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1500},
+            }
+
+            models_to_try = [self.model_name, "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.7-flash"]
+            seen_models = set()
+            unique_models = [m for m in models_to_try if m and not (m in seen_models or seen_models.add(m))]
+
+            for model in unique_models:
+                endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+                url = f"{endpoint}?key={self.api_key}"
+                try:
+                    res = requests.post(url, headers=headers, json=payload, timeout=20)
+                    if res.status_code == 200:
+                        data = res.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            text_response = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+                            if text_response:
+                                DAILY_API_REQUEST_COUNT += 1
+                                logger.info(f"Successfully generated TikTok caption via Gemini API ({model})! (Daily API count: {DAILY_API_REQUEST_COUNT}/{self.max_rpd})")
+                                if self.rpm_delay > 0:
+                                    time.sleep(self.rpm_delay)
+                                return self.clean_cta(text_response)
+                except Exception as e:
+                    logger.warning(f"Gemini model '{model}' failed for TikTok: {e}. Trying next...")
+
+        # Fallback if API fails
+        return self._generate_fallback_captions(title, raw_caption, "", "#videohangthoitrang")["tiktok"]
+
+
     def _call_gemini_api(
         self,
         title: str,
@@ -154,17 +239,29 @@ YÊU CẦU ĐẶC BIỆT LẦN NÀY: Khách hàng chưa hài lòng với bản n
 QUY TẮC BẮT BUỘC:
 1. KHÔNG thêm bất kỳ câu Kêu Gọi Mua Hàng / CTA nào (NHƯ: "Mua ngay tại...", "Bấm vào link...", "Sắm ngay...", "Link bio..."). Trong video đã có CTA rồi.
 2. TUYỆT ĐỐI KHÔNG nhắc tên nền tảng chéo nhau (VD: Đang viết cho TikTok thì KHÔNG được nhắc từ "Shopee", "Facebook"...).
-3. TẠO JSON ĐÚNG CẤU TRÚC VỚI 6 PHẦN:
+3. CẤU TRÚC BÀI VIẾT CHO TỪNG KÊNH:
    - "facebook": Bài viết Facebook hay, mô tả đặc tính + 3-5 hashtags.
    - "youtube": Bài viết YouTube Shorts (2 dòng đầu có tên SP, tuyệt đối KHÔNG chứa link sản phẩm, có #Shorts + 3 hashtags).
    - "instagram": Bài viết Instagram phong cách thẩm mỹ + 10-15 hashtags hot.
-   - "tiktok": Bài viết TikTok dài, sâu sắc, kể chuyện hấp dẫn, cuốn hút và giữ chân người xem theo đúng cấu trúc chuẩn sau:
-     + Dòng 1: Câu mở đầu / quote triết lý hoặc gợi mở cảm xúc trong ngoặc kép kèm emoji (Ví dụ: “Một đôi giày cổ điển xứng đáng có thêm một hành trình mới.” 👞✨).
-     + Dòng 2: 1-2 câu dẫn dắt bối cảnh hoặc câu chuyện, giải thích thực trạng/lý do sản phẩm.
-     + Danh sách các gạch đầu dòng bắt đầu bằng dấu ✔ (từ 3-4 dòng) nêu chi tiết các bước, công đoạn, chất liệu hoặc tính năng nổi bật.
-     + 1 đoạn đúc kết chiều sâu/sự tỉ mỉ/tâm huyết mang lại giá trị thực tế bắt đầu bằng icon 💡.
-     + Câu kết kích thích giữ chân người xem hết video (Ví dụ: Xem hết video để theo dõi hành trình... nhé! 🔥).
-     + Cuối bài: Đúng 5 hashtags chất lượng liên quan trực tiếp đến sản phẩm.
+   - "tiktok": BẮT BUỘC VIẾT DÀI, GIÀU CHI TIẾT, NGHỆ THUẬT VÀ CUỐN HÚT CHÍNH XÁC THEO VĂN PHONG VÀ BỐ CỤC BÀI MẪU SAU ĐÂY:
+     
+     --- BÀI MẪU TIÊU CHUẨN TIKTOK (HÃY HỌC TẬP CHÍNH XÁC PHONG CÁCH NÀY CHO SẢN PHẨM HIỆN TẠI) ---
+     “Một đôi giày cổ điển xứng đáng có thêm một hành trình mới.” 👞✨
+
+     Đôi giày Brogue này đã bạc màu theo thời gian, nhưng chất da vẫn còn rất tốt. Thay vì thay mới, mình lựa chọn phục hồi bằng phương pháp nhuộm thủ công.
+
+     ✔ Làm sạch và xử lý bề mặt da
+     ✔ Pha màu phù hợp với màu gốc
+     ✔ Nhuộm từng lớp mỏng để màu lên tự nhiên
+     ✔ Hoàn thiện giúp đôi giày lấy lại vẻ lịch lãm
+
+     💡 Mỗi công đoạn đều cần sự kiên nhẫn và tỉ mỉ. Chính điều đó tạo nên thành phẩm có chiều sâu, giữ được nét đẹp cổ điển của da thật thay vì một lớp sơn dày che phủ.
+
+     Xem hết video để theo dõi hành trình hồi sinh của đôi giày Brogue từ cũ kỹ đến chỉn chu như mới nhé! 🔥
+
+     #phuchoigiay #giayda #brogue #customgiay #leathercare
+     --- HẾT BÀI MẪU ---
+
    - "shopee": TỔNG ĐỘ DÀI TOÀN BỘ BÀI VIẾT KỂ CẢ HASHTAG PHẢI DƯỚI 150 KÝ TỰ (< 150 chars total). Bắt buộc chứa 4 tags này ở cuối: #shopeevideo #luotvuimualien #shopeecreator {cat_tag}.
    - "zalo": Bài viết Zalo bán hàng + 3-5 hashtags (giống Facebook).
 
@@ -181,7 +278,7 @@ TRẢ VỀ CHỈ DUY NHẤT 1 OBJECT JSON HỢP LỆ (KHÔNG THÊM CÂU TỪ NÀ
         headers = {"Content-Type": "application/json"}
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1500},
+            "generationConfig": {"temperature": 0.7, "maxOutputTokens": 3000},
         }
 
         models_to_try = [self.model_name, "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.7-flash"]

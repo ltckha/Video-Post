@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
 
 from connectors.base import PostMetadata
-from core.account_manager import AccountManager
+from .human_simulator import HumanSimulator, check_cookie_health
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +89,7 @@ class TikTokBrowserConnector:
         if profile_dir:
             self.profile_dir = Path(profile_dir).resolve()
         elif brand_name:
+            from core.account_manager import AccountManager
             account_mgr = AccountManager()
             creds = account_mgr.get_brand_credentials(brand_name, "tiktok") or {}
             p_dir = creds.get("profile_dir", f"config/browser_profiles/tiktok_{brand_name.replace(' ', '_').lower()}")
@@ -110,12 +111,17 @@ class TikTokBrowserConnector:
             "--disable-dev-shm-usage",
         ]
 
+        realistic_ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+        viewport_cfg = {"width": 1440, "height": 900}
+
         # Prioritize real Google Chrome installed on macOS
         try:
             context = p.chromium.launch_persistent_context(
                 user_data_dir=target_dir,
                 channel="chrome",
                 headless=is_headless,
+                user_agent=realistic_ua,
+                viewport=viewport_cfg,
                 ignore_default_args=["--enable-automation"],
                 args=args,
             )
@@ -124,6 +130,8 @@ class TikTokBrowserConnector:
             context = p.chromium.launch_persistent_context(
                 user_data_dir=target_dir,
                 headless=is_headless,
+                user_agent=realistic_ua,
+                viewport=viewport_cfg,
                 ignore_default_args=["--enable-automation"],
                 args=args,
             )
@@ -144,8 +152,10 @@ class TikTokBrowserConnector:
         except Exception as e:
             raise ValueError(f"File cookie JSON không hợp lệ: {e}")
 
-        if not isinstance(raw_cookies, list):
-            raise ValueError("File JSON phải chứa danh sách các cookie (Array of objects).")
+        health = check_cookie_health(raw_cookies)
+        if not health["valid"]:
+            raise ValueError(f"Cookie không hợp lệ: {health['reason']}")
+        logger.info(f"[TikTok/{self.brand_name}] Cookie health check PASS! (Hạn còn ~{health['expires_in_days']} ngày)")
 
         normalized = _normalize_cookie_editor_export(raw_cookies)
         logger.info(f"[TikTok/{self.brand_name}] Đã chuẩn hóa {len(normalized)} cookie cho Playwright.")
@@ -156,9 +166,21 @@ class TikTokBrowserConnector:
                 context.add_cookies(normalized)
                 page = context.pages[0] if context.pages else context.new_page()
 
-                logger.info(f"[TikTok/{self.brand_name}] Đang điều hướng đến {TIKTOK_UPLOAD_URL} để xác thực cookie...")
-                page.goto(TIKTOK_UPLOAD_URL, wait_until="domcontentloaded", timeout=45000)
-                page.wait_for_timeout(3000)
+                logger.info(f"[TikTok/{self.brand_name}] Khởi động phiên và điều hướng xác thực cookie...")
+                try:
+                    page.goto("https://www.tiktok.com/explore", wait_until="domcontentloaded", timeout=30000)
+                    page.wait_for_timeout(2000)
+                except Exception:
+                    pass
+
+                for test_url in ["https://www.tiktok.com/tiktokstudio/upload", "https://www.tiktok.com/creator-center/upload", "https://www.tiktok.com/upload"]:
+                    try:
+                        page.goto(test_url, wait_until="domcontentloaded", timeout=40000)
+                        page.wait_for_timeout(3000)
+                        if "login" not in page.url and "chrome-error" not in page.url:
+                            break
+                    except Exception:
+                        pass
 
                 current_url = page.url
                 if "login" in current_url:
@@ -166,10 +188,11 @@ class TikTokBrowserConnector:
 
                 # Check if upload file input is present
                 try:
-                    file_input.wait_for(state="attached", timeout=15000)
+                    file_input = page.locator('input[type="file"]').first
+                    file_input.wait_for(state="attached", timeout=20000)
                     logger.info(f"[TikTok/{self.brand_name}] 🎉 XÁC THỰC THÀNH CÔNG! Đã tìm thấy ô upload video.")
                     self._mark_account_active()
-                    print(f"\n🎉 XÁC THỰC THÀNH CÔNG CHO BRAND '{self.brand_name}'!")
+                    print(f"\n🎉 XÁC THỰC THÀNH CÔNG CHO BRAND '{self.brand_name}'! (Hạn cookie còn ~{health['expires_in_days']} ngày)")
                     print(f"📁 Toàn bộ phiên đăng nhập đã được cấy vào profile: {self.profile_dir}\n")
                     return True
                 except Exception:
@@ -222,18 +245,46 @@ class TikTokBrowserConnector:
         with sync_playwright() as p:
             context = self._get_context(p, profile_dir=target_profile, headless=self.headless)
             page = context.pages[0] if context.pages else context.new_page()
+            sim = HumanSimulator(page)
 
             try:
-                # 1. Navigate to Upload Page
-                logger.info(f"Navigating to {TIKTOK_UPLOAD_URL}...")
-                page.goto(TIKTOK_UPLOAD_URL, wait_until="domcontentloaded", timeout=60000)
-                page.wait_for_timeout(3000)
+                # 1. Natural Session Warm-up & Navigate to TikTok Studio
+                logger.info("Khởi động phiên tự nhiên (Session Warm-up) trên TikTok...")
+                try:
+                    page.goto("https://www.tiktok.com/explore", wait_until="domcontentloaded", timeout=30000)
+                    page.wait_for_timeout(random.randint(1500, 2500))
+                except Exception as warm_err:
+                    logger.debug(f"Warm-up step notice: {warm_err}")
+
+                logger.info("Navigating to TikTok Studio Upload...")
+                nav_success = False
+                upload_urls = [
+                    "https://www.tiktok.com/tiktokstudio/upload",
+                    "https://www.tiktok.com/creator-center/upload",
+                    "https://www.tiktok.com/upload",
+                ]
+                for target_url in upload_urls:
+                    try:
+                        logger.info(f"Connecting to {target_url}...")
+                        resp = page.goto(target_url, wait_until="domcontentloaded", timeout=45000)
+                        page.wait_for_timeout(3000)
+                        if "login" not in page.url and "chrome-error" not in page.url:
+                            nav_success = True
+                            break
+                    except Exception as nav_err:
+                        logger.warning(f"Thử kết nối {target_url} gặp sự cố ({nav_err}), thử cổng tiếp theo...")
+                        page.wait_for_timeout(2000)
+
+                page.wait_for_timeout(2000)
 
                 if "login" in page.url:
                     raise RuntimeError(
                         f"Tài khoản TikTok '{self.brand_name}' chưa đăng nhập hoặc cookie đã hết hạn. "
                         f"Vui lòng chạy lệnh 'tiktok-import-cookies --brand \"{self.brand_name}\" --cookies-file \"<file.json>\"'."
                     )
+
+                # Pre-upload natural browsing simulation
+                sim.pre_upload_browse()
 
                 # 2. Attach Video File via CDP Protocol
                 logger.info("Locating file input and attaching video file...")
@@ -242,47 +293,67 @@ class TikTokBrowserConnector:
                 file_input.set_input_files(str(path))
                 logger.info(f"Video file '{path.name}' attached successfully!")
 
-                # Wait for upload processing and dismiss any intro tooltips/modals
-                page.wait_for_timeout(6000)
-                try:
-                    page.keyboard.press("Escape")
-                    page.wait_for_timeout(500)
-                    # Click any 'Got it' or 'Dismiss' or close buttons if present
-                    page.locator("button:has-text('Got it'), button:has-text('Dismiss'), button:has-text('Đã hiểu')").click(timeout=2000)
-                except Exception:
-                    pass
+                # Wait for upload processing and dismiss all popups / modals
+                page.wait_for_timeout(4000)
+                sim.dismiss_popups()
 
-                # 3. Enter Caption & Hashtags
-                logger.info("Entering Caption and Hashtags...")
+                # 3. Enter Caption with Human Typing & TikTok Native Hashtag Suggestion Enter
+                logger.info("Entering Caption and Interactive Hashtags...")
                 caption_editor = page.locator("div[contenteditable='true']").first
                 caption_editor.wait_for(state="visible", timeout=60000)
 
-                # Focus and clear default file name
-                caption_editor.click()
-                page.wait_for_timeout(500)
-                page.keyboard.press("Meta+A" if os.name == "posix" else "Control+A")
-                page.keyboard.press("Backspace")
-                page.wait_for_timeout(300)
+                # Focus and thoroughly clear default file name
+                sim.dismiss_popups()
+                sim.clear_contenteditable(caption_editor)
+                page.wait_for_timeout(400)
 
                 clean_caption = caption_text.strip()
-                logger.info(f"Typing caption ({len(clean_caption)} chars): {clean_caption[:60]}...")
-                for char in clean_caption:
-                    caption_editor.type(char, delay=random.randint(15, 40))
+                logger.info(f"Typing caption via HumanSimulator ({len(clean_caption)} chars)...")
+                sim.type_caption_with_tiktok_hashtags(caption_editor, clean_caption)
 
-                page.wait_for_timeout(3000)
+                # Dismiss any overlay tooltip after typing
+                sim.dismiss_popups()
 
-                # Dismiss any tooltip that might have appeared after typing
+                # 4. Copyright Check Automation
                 try:
-                    page.keyboard.press("Escape")
-                except Exception:
-                    pass
+                    logger.info("Checking for Copyright Check toggle...")
+                    copyright_toggle = page.locator("input[type='checkbox'][name*='copyright'], div:has-text('Run a copyright check'), div:has-text('Kiểm tra bản quyền')").first
+                    if copyright_toggle.is_visible(timeout=3000):
+                        logger.info("Activating Copyright Check on TikTok Studio...")
+                        sim.human_click_locator(copyright_toggle)
+                        page.wait_for_timeout(2500)
+                except Exception as e:
+                    logger.debug(f"Copyright check toggle optional step: {e}")
 
-                # 4. Scroll down and locate Post / Publish button
+                # 5. Scroll down and locate Post / Publish button
                 logger.info("Scrolling to bottom and locating Post button...")
-                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                page.wait_for_timeout(1000)
+                sim.human_scroll(500, steps=6)
+                page.wait_for_timeout(1500)
 
-                post_btn = page.locator("button:has-text('Post'), button:has-text('Đăng'), button:has-text('Publish')").last
+                # Prioritize dedicated post button selectors on TikTok Studio
+                post_selectors = [
+                    "div.btn-post button",
+                    "button[data-e2e='post_video_button']",
+                    "button.btn-post",
+                    "button:has-text('Post'):not(:has-text('Save'))",
+                    "button:has-text('Đăng'):not(:has-text('Lưu'))",
+                    "button:has-text('Publish')",
+                ]
+
+                post_btn = None
+                for sel in post_selectors:
+                    loc = page.locator(sel).last
+                    try:
+                        if loc.is_visible(timeout=1500):
+                            post_btn = loc
+                            logger.info(f"Found Post button with selector: '{sel}'")
+                            break
+                    except Exception:
+                        pass
+
+                if not post_btn:
+                    post_btn = page.locator("button:has-text('Post'), button:has-text('Đăng'), button:has-text('Publish')").last
+
                 post_btn.scroll_into_view_if_needed()
                 post_btn.wait_for(state="visible", timeout=45000)
 
@@ -294,16 +365,102 @@ class TikTokBrowserConnector:
                         break
                     page.wait_for_timeout(2000)
 
-                logger.info("Clicking Post button...")
-                post_btn.scroll_into_view_if_needed()
-                post_btn.click()
+                # Natural human hesitation before clicking Post
+                page.wait_for_timeout(random.randint(2000, 3500))
 
-                # 5. Wait for publish confirmation
-                logger.info("Waiting for publish confirmation...")
-                page.wait_for_timeout(8000)
-                
-                # Check for success indicators
-                logger.info(f"[TikTok/{self.brand_name}] ✅ Đăng video thành công!")
+                # Step 5.1: Click Post button with Dual-Action (Human Move + Force Click)
+                logger.info("Moving smoothly and clicking Post button...")
+                try:
+                    sim.human_click_locator(post_btn)
+                except Exception:
+                    pass
+                page.wait_for_timeout(500)
+                try:
+                    post_btn.click(force=True, timeout=3000)
+                except Exception:
+                    pass
+
+                # Step 5.2: Check if confirmation modal / popup appears
+                page.wait_for_timeout(2000)
+                confirm_selectors = [
+                    "button:has-text('Post now')",
+                    "button:has-text('Đăng ngay')",
+                    "button:has-text('Vẫn đăng')",
+                    "button:has-text('Continue to post')",
+                    "button:has-text('Tiếp tục đăng')",
+                    "div[role='dialog'] button:has-text('Post')",
+                    "div[role='dialog'] button:has-text('Đăng')",
+                ]
+                for c_sel in confirm_selectors:
+                    try:
+                        c_btn = page.locator(c_sel).first
+                        if c_btn.is_visible(timeout=1500):
+                            logger.info(f"Found Post Confirmation popup ('{c_sel}'). Clicking to confirm...")
+                            c_btn.click(force=True, timeout=3000)
+                            page.wait_for_timeout(2000)
+                            break
+                    except Exception:
+                        pass
+
+                # 6. Strict Publish Verification (Poll for actual success confirmation)
+                logger.info("Waiting and verifying actual publish confirmation from TikTok Studio...")
+                success_published = False
+                verify_start = time.time()
+
+                success_indicators = [
+                    "text=Your video has been uploaded",
+                    "text=Video của bạn đã được tải lên",
+                    "text=Video đã được tải lên",
+                    "text=Manage your posts",
+                    "text=Quản lý bài đăng",
+                    "text=Upload another video",
+                    "text=Tải lên video khác",
+                    "text=Post another video",
+                    "button:has-text('Manage your posts')",
+                    "button:has-text('Quản lý bài đăng')",
+                    "button:has-text('Upload another video')",
+                    "button:has-text('Tải lên video khác')",
+                ]
+
+                while time.time() - verify_start < 45:
+                    current_url = page.url
+                    # Check URL redirect
+                    if "content" in current_url or "manage" in current_url or "posts" in current_url:
+                        logger.info(f"TikTok redirected to content management page: {current_url}")
+                        success_published = True
+                        break
+
+                    # Check success modal / message
+                    for s_ind in success_indicators:
+                        try:
+                            if page.locator(s_ind).first.is_visible(timeout=500):
+                                logger.info(f"Detected TikTok upload success indicator: '{s_ind}'")
+                                success_published = True
+                                break
+                        except Exception:
+                            pass
+
+                    if success_published:
+                        break
+
+                    # Check for explicit error banner/toast
+                    try:
+                        err_toast = page.locator("div[class*='toast'][class*='error'], div[role='alert'], div[class*='error-message']").first
+                        if err_toast.is_visible(timeout=500):
+                            err_txt = err_toast.inner_text().strip()
+                            if err_txt:
+                                raise RuntimeError(f"TikTok thông báo lỗi: '{err_txt}'")
+                    except Exception:
+                        pass
+
+                    page.wait_for_timeout(2000)
+
+                if not success_published:
+                    raise RuntimeError(
+                        "TikTok chưa hoàn tất xuất bản sau khi bấm nút Đăng (không nhận được thông báo xác nhận thành công từ TikTok Studio)."
+                    )
+
+                logger.info(f"[TikTok/{self.brand_name}] ✅ Đăng video thành công 100%!")
 
                 return {
                     "status": "success",

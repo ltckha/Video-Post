@@ -13,13 +13,10 @@ Tài liệu này lưu trữ các ý tưởng cải tiến hệ thống **Video-P
 
 ---
 
-## 2. 🛡️ Tối Ưu Hóa Hành Vi Đăng Bài TikTok Giống Người Thật (Anti-Bot / Stealth Posting)
-- **Mục tiêu**: Nâng cấp module Playwright trong [`connectors/tiktok/browser_uploader.py`](file:///Users/khan/Developer/Video-Post/connectors/tiktok/browser_uploader.py) để mô phỏng 100% thao tác người thật, giảm thiểu tối đa rủi ro bị TikTok phát hiện và bóp tương tác hoặc chặn tài khoản.
+## 2. ⏰ Tự Động Lên Lịch Đăng TikTok Giờ Vàng (Schedule Posting on TikTok Studio)
+- **Mục tiêu**: Tận dụng tính năng Lên lịch đăng (Schedule) trên TikTok Studio để tự động phân bổ bài đăng vào các khung giờ vàng (11:30 - 12:30, 19:30 - 21:00) thay vì xuất bản ngay lập tức.
 - **Giải pháp đề xuất**:
-  - **Mô phỏng di chuyển chuột tự nhiên (Bezier Curve Mouse Movements)**: Không nhảy tọa độ tức thì mà di chuyển chuột có quán tính, độ cong và rung nhẹ (jitter) giống tay người.
-  - **Hành vi xem trang trước khi tải (Pre-upload Browsing)**: Khi vừa mở TikTok Studio, cuộn trang lên xuống nhẹ nhàng, dừng 1-3 giây như đang đọc thông tin trước khi chọn tải video.
-  - **Gõ phím ngẫu nhiên & ngắt nghỉ tự nhiên (Human Typing Dynamics)**:
-    - Thay đổi độ trễ giữa các phím ngẫu nhiên (15ms - 120ms).
-    - Thỉnh thoảng gõ nhầm 1 ký tự và bấm Backspace sửa lại để tăng tính tự nhiên.
-  - **Giãn cách thời gian chờ tự nhiên trước khi bấm Đăng (Human Delay)**: Sau khi tải và điền caption xong, dừng xem trước 3-7 giây rồi mới rê chuột đến nút Đăng và click.
-  - **Ngẫu nhiên hóa Viewport & Window Position**: Tránh việc mọi phiên chạy đều có kích thước cửa sổ cố định.
+  - Nhận diện bộ chọn ngày và giờ (Date & Time Picker) trên giao diện TikTok Studio.
+  - Tự động tính toán khung giờ vàng kế tiếp phù hợp cho từng Brand.
+  - Chọn radio "Schedule" và thiết lập giờ phát tự động.
+

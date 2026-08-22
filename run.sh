@@ -54,17 +54,33 @@ while true; do
             esac
             
             if [ "$PLATFORM" == "tiktok" ]; then
+                eval $($PYTHON_BIN -c "
+import json
+data = json.load(open('config/tiktok_accounts.json'))
+accs = data.get('accounts', {})
+for k, var in [
+    ('Hiệu giày Hải Nancy', 'ST_HAINANCY'),
+    ('Mua Chuẩn Xài Lâu', 'ST_MUACHUAN'),
+    ('Macadamia Hải Nancy', 'ST_MACADAMIA'),
+    ('Ờ Đà Lạt vậy thôi', 'ST_DALAT'),
+    ('Yen Handmade Leather', 'ST_YEN'),
+    ('YenYen Deals', 'ST_YENYEN'),
+    ('Elegant Steps', 'ST_ELEGANT')
+]:
+    is_act = accs.get(k, {}).get('status') == 'active'
+    print(f'{var}=\"(' + ('✅ Đã nạp Cookie' if is_act else '⚠️ Chưa nạp Cookie') + ')\"')
+")
                 echo ""
                 echo "=================================================="
                 echo "  🎬 ĐĂNG BÀI TIKTOK (CHỌN THƯƠNG HIỆU / BRAND)"
                 echo "=================================================="
-                echo " 1) Hiệu giày Hải Nancy (✅ Đã nạp Cookie)"
-                echo " 2) Mua Chuẩn Xài Lâu (⚠️ Chưa nạp Cookie)"
-                echo " 3) Macadamia Hải Nancy (⚠️ Chưa nạp Cookie)"
-                echo " 4) Ờ Đà Lạt vậy thôi (⚠️ Chưa nạp Cookie)"
-                echo " 5) Yen Handmade Leather (⚠️ Chưa nạp Cookie)"
-                echo " 6) YenYen Deals (⚠️ Chưa nạp Cookie)"
-                echo " 7) Elegant Steps (⚠️ Chưa nạp Cookie)"
+                echo " 1) Hiệu giày Hải Nancy $ST_HAINANCY"
+                echo " 2) Mua Chuẩn Xài Lâu $ST_MUACHUAN"
+                echo " 3) Macadamia Hải Nancy $ST_MACADAMIA"
+                echo " 4) Ờ Đà Lạt vậy thôi $ST_DALAT"
+                echo " 5) Yen Handmade Leather $ST_YEN"
+                echo " 6) YenYen Deals $ST_YENYEN"
+                echo " 7) Elegant Steps $ST_ELEGANT"
                 echo " 0) Quay lại Menu chính"
                 echo "=================================================="
                 read -rp "👉 Chọn Brand muốn đăng TikTok (0-7): " tt_post_choice
@@ -112,17 +128,33 @@ while true; do
             read -rp "Nhấn Enter để quay lại menu..."
             ;;
         6)
+            eval $($PYTHON_BIN -c "
+import json
+data = json.load(open('config/tiktok_accounts.json'))
+accs = data.get('accounts', {})
+for k, var in [
+    ('Hiệu giày Hải Nancy', 'ST_HAINANCY'),
+    ('Mua Chuẩn Xài Lâu', 'ST_MUACHUAN'),
+    ('Macadamia Hải Nancy', 'ST_MACADAMIA'),
+    ('Ờ Đà Lạt vậy thôi', 'ST_DALAT'),
+    ('Yen Handmade Leather', 'ST_YEN'),
+    ('YenYen Deals', 'ST_YENYEN'),
+    ('Elegant Steps', 'ST_ELEGANT')
+]:
+    is_act = accs.get(k, {}).get('status') == 'active'
+    print(f'{var}=\"(' + ('✅ Đã nạp Cookie' if is_act else '⚠️ Chưa nạp Cookie') + ')\"')
+")
             echo ""
             echo "=================================================="
             echo "  🍪 NẠP COOKIE TIKTOK CHO BRAND (TỪ FILE JSON)"
             echo "=================================================="
-            echo " 1) Hiệu giày Hải Nancy"
-            echo " 2) Mua Chuẩn Xài Lâu"
-            echo " 3) Macadamia Hải Nancy"
-            echo " 4) Ờ Đà Lạt vậy thôi"
-            echo " 5) Yen Handmade Leather"
-            echo " 6) YenYen Deals"
-            echo " 7) Elegant Steps"
+            echo " 1) Hiệu giày Hải Nancy $ST_HAINANCY"
+            echo " 2) Mua Chuẩn Xài Lâu $ST_MUACHUAN"
+            echo " 3) Macadamia Hải Nancy $ST_MACADAMIA"
+            echo " 4) Ờ Đà Lạt vậy thôi $ST_DALAT"
+            echo " 5) Yen Handmade Leather $ST_YEN"
+            echo " 6) YenYen Deals $ST_YENYEN"
+            echo " 7) Elegant Steps $ST_ELEGANT"
             echo " 0) Quay lại Menu chính"
             echo "=================================================="
             read -rp "👉 Chọn tài khoản Brand (0-7): " tt_brand_choice

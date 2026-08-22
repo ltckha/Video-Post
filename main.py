@@ -591,6 +591,87 @@ def rewrite_needs_edit():
 
 
 @app.command()
+def rewrite_tiktok_needs_edit(
+    limit: int = typer.Option(10, "--limit", "-l", help="Số lượng bài TikTok needs_edit cần viết lại mỗi đợt (mặc định: 10 bài để tránh chạm RPM)"),
+    delay: int = typer.Option(4, "--delay", "-d", help="Độ trễ giữa mỗi bài gọi Gemini API (giây)"),
+):
+    """🤖 Viết lại RIÊNG caption TikTok cho các dòng đang có status_tt = 'needs_edit' trên Tab Master."""
+    console.print(f"\n[bold yellow]🎬 ĐANG TRIỆU HỒI GEMINI AI VIẾT LẠI CAPTION TIKTOK (Giới hạn: {limit} bài, RPM Delay: {delay}s)...[/bold yellow]")
+    
+    from core.ai_captioner import AICaptionGenerator
+    from core.sheet_client import GoogleSheetDirectClient
+    import time
+
+    try:
+        sc = GoogleSheetDirectClient()
+        rows = sc.fetch_all_records("Master")
+    except Exception as e:
+        console.print(f"[bold red]❌ Lỗi đọc Tab Master qua Service Account: {e}[/bold red]")
+        return
+
+    # Filter rows that have status_tt == 'needs_edit'
+    tiktok_needs_edit_rows = []
+    for r in rows:
+        st_tt = str(r.get("status_tt", "")).strip().lower()
+        if st_tt == "needs_edit":
+            tiktok_needs_edit_rows.append(r)
+
+    if not tiktok_needs_edit_rows:
+        console.print("[bold green]✨ Tuyệt vời! Không có bài nào trên Tab Master đang có status_tt = 'needs_edit'.[/bold green]\n")
+        return
+
+    total_pending_count = len(tiktok_needs_edit_rows)
+    target_rows = tiktok_needs_edit_rows[:limit]
+    console.print(f"[bold cyan]🔍 Tìm thấy {total_pending_count} bài TikTok 'needs_edit'. Đang xử lý đợt {len(target_rows)} bài...[/bold cyan]\n")
+
+    ai = AICaptionGenerator()
+    ai.rpm_delay = delay
+    updated_records = []
+    saved_count = 0
+
+    for idx, r in enumerate(target_rows, 1):
+        job_id = r.get("job_id", "")
+        title = r.get("title", "")
+        brand_tt = r.get("brand_tt") or r.get("brand_fb") or "Mua Chuẩn Xài Lâu"
+        raw_cap = r.get("caption_fb") or title
+
+        console.print(f"  [{idx}/{len(target_rows)}] 📝 Đang viết TikTok cho Job #{job_id}: [bold yellow]{title[:45]}...[/bold yellow]")
+
+        new_tt_caption = ai.generate_tiktok_caption(
+            title=title,
+            raw_caption=raw_cap,
+            brand_name=brand_tt,
+        )
+
+        if new_tt_caption:
+            updated_rec = dict(r)
+            updated_rec["caption_tt"] = new_tt_caption
+            updated_rec["status_tt"] = "pending"
+            updated_records.append(updated_rec)
+            console.print(f"      ✅ Đã tạo Storytelling TikTok thành công! Chuyển status_tt ➡️ 'pending'.")
+
+        # Auto-save batch every 10 items to Google Sheet to ensure safety
+        if len(updated_records) >= 10:
+            console.print(f"\n[bold blue]📡 Đang tự động lưu đợt {len(updated_records)} bài lên Google Sheet Tab Master...[/bold blue]")
+            try:
+                sc.update_master_rows(updated_records)
+                saved_count += len(updated_records)
+                console.print(f"[bold green]💾 Đã lưu thành công mốc {saved_count}/{len(target_rows)} bài lên Sheet.[/bold green]\n")
+                updated_records = []
+            except Exception as e:
+                console.print(f"[bold red]❌ Lỗi lưu trung gian lên Google Sheet: {e}[/bold red]\n")
+
+    if updated_records:
+        console.print(f"\n[bold blue]📡 Đang đồng bộ {len(updated_records)} bài cuối cùng lên Google Sheet Tab Master...[/bold blue]")
+        try:
+            sc.update_master_rows(updated_records)
+            saved_count += len(updated_records)
+            console.print(f"[bold green]🎉 THÀNH CÔNG! Đã cập nhật xong toàn bộ {saved_count} bài TikTok lên Google Sheet Tab Master.[/bold green]\n")
+        except Exception as e:
+            console.print(f"[bold red]❌ Lỗi cập nhật Google Sheet: {e}[/bold red]\n")
+
+
+@app.command()
 def list_jobs():
     """List pending and recent posting jobs in queue."""
     queue = JobQueue()
@@ -770,6 +851,35 @@ def tiktok_import_cookies(
 
 
 @app.command()
+def tiktok_check_cookies():
+    """🍪 Kiểm tra trạng thái sống/hết hạn của toàn bộ tài khoản TikTok trong hệ thống."""
+    from core.account_manager import AccountManager
+    from connectors.tiktok.human_simulator import check_cookie_health
+    from pathlib import Path
+    import json
+
+    console.print("\n[bold cyan]🍪 ĐANG KIỂM TRA SỨC KHỎE COOKIE TIKTOK CÁC THƯƠNG HIỆU...[/bold cyan]\n")
+    mgr = AccountManager()
+    all_brands = ["Hiệu giày Hải Nancy", "Mua Chuẩn Xài Lâu", "Ờ Đà Lạt vậy thôi", "Macadamia Hải Nancy"]
+
+    for b in all_brands:
+        creds = mgr.get_brand_credentials(b, "tiktok")
+        if not creds:
+            console.print(f"  🏢 [bold]{b:<22}[/bold] ➡️  [dim]Chưa thiết lập cấu hình TikTok.[/dim]")
+            continue
+
+        p_dir = Path(creds.get("profile_dir", ""))
+        st = creds.get("status", "inactive")
+        
+        if p_dir.exists():
+            console.print(f"  🏢 [bold yellow]{b:<22}[/bold yellow] ➡️  Status: [bold green]{st}[/bold green] | Profile: [dim]{p_dir.name}[/dim] ✅")
+        else:
+            console.print(f"  🏢 [bold red]{b:<22}[/bold red] ➡️  Status: [bold red]Chưa có Profile/Cookie[/bold red] ❌")
+
+    console.print()
+
+
+@app.command()
 def tiktok_login(
     brand: str = typer.Option("Hiệu giày Hải Nancy", help="Target TikTok brand name"),
 ):
@@ -867,8 +977,28 @@ def tiktok_post(
             console.print(f"[bold green]🎉 Hoàn tất! Đã đăng thành công lên TikTok và cập nhật status_tt = 'published' trên Google Sheet![/bold green]\n")
         else:
             console.print(f"[bold red]❌ Đăng bài không thành công: {res}[/bold red]\n")
+            try:
+                from datetime import datetime
+                err_ts = f"❌ Lỗi: {datetime.now().strftime('%H:%M %d/%m/%Y')}"
+                updated_rec = dict(target)
+                updated_rec["status_tt"] = "failed"
+                sc.update_master_rows([updated_rec])
+                sc.record_post_timestamp(brand=brand_tt, platform="tt", timestamp_str=err_ts)
+                console.print(f"[bold yellow]⚠️ Đã cập nhật status_tt = 'failed' và báo lỗi lên Tab Status.[/bold yellow]\n")
+            except Exception:
+                pass
     except Exception as e:
         console.print(f"[bold red]❌ Lỗi khi đăng TikTok cho '{brand_tt}': {e}[/bold red]\n")
+        try:
+            from datetime import datetime
+            err_ts = f"❌ Lỗi: {datetime.now().strftime('%H:%M %d/%m/%Y')}"
+            updated_rec = dict(target)
+            updated_rec["status_tt"] = "failed"
+            sc.update_master_rows([updated_rec])
+            sc.record_post_timestamp(brand=brand_tt, platform="tt", timestamp_str=err_ts)
+            console.print(f"[bold yellow]⚠️ Đã cập nhật status_tt = 'failed' và báo lỗi lên Tab Status.[/bold yellow]\n")
+        except Exception:
+            pass
 
 
 @app.command()
@@ -1039,8 +1169,24 @@ def auto_post_active(
                         brand_posted_count += 1
                     else:
                         console.print(f"     ❌ Đăng TikTok thất bại: {res}")
+                        try:
+                            from datetime import datetime
+                            err_ts = f"❌ Lỗi: {datetime.now().strftime('%H:%M %d/%m/%Y')}"
+                            candidate["status_tt"] = "failed"
+                            sc.update_master_rows([dict(candidate)])
+                            sc.record_post_timestamp(brand=b, platform="tt", timestamp_str=err_ts)
+                        except Exception:
+                            pass
             except Exception as ex:
                 console.print(f"     ❌ Lỗi khi đăng [{p.upper()}]: {ex}")
+                try:
+                    from datetime import datetime
+                    err_ts = f"❌ Lỗi: {datetime.now().strftime('%H:%M %d/%m/%Y')}"
+                    candidate[f"status_{p}"] = "failed"
+                    sc.update_master_rows([dict(candidate)])
+                    sc.record_post_timestamp(brand=b, platform=p, timestamp_str=err_ts)
+                except Exception:
+                    pass
 
         if brand_posted_count > 0:
             total_posted += 1
