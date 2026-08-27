@@ -2,6 +2,11 @@
   "master_sheet_url": "https://docs.google.com/spreadsheets/d/1Xg67qhp1J_Izt7v5uDKRgKjdEZapX9giKJ_ym0OMJN4/",
   "sources": [
     {
+      "name": "SANPHAM",
+      "tab_name": "SANPHAM",
+      "sheet_url": "https://docs.google.com/spreadsheets/d/1U0b6_aVJJ93i5-V1RV1jUsQ9dhLYCY9BcJMI7R6J2C0/"
+    },
+    {
       "name": "Omni-Video",
       "tab_name": "Omni-Video"
     },

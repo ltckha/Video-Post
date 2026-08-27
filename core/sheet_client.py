@@ -88,10 +88,11 @@ class GoogleSheetDirectClient:
             records.append(rec)
         return records
 
-    def sync_input_tabs_to_master(self) -> Dict[str, Any]:
-        """Collect all input tabs (Omni-Video, Auto-Video-Factory) and sync directly to Master tab.
+    def sync_input_tabs_to_master(self, source_filter: Optional[str] = None) -> Dict[str, Any]:
+        """Collect all input tabs (SANPHAM, Omni-Video, Auto-Video-Factory) and sync directly to Master tab.
         
         Dynamically reads headers from Row 1, preserves existing captions, brands, and statuses.
+        Supports filtering by specific source/tab (e.g. 'SANPHAM', 'Omni-Video', 'Auto-Video-Factory', or 'all').
         """
         if not self.sh:
             self._connect()
@@ -114,33 +115,74 @@ class GoogleSheetDirectClient:
                     if job_id not in existing_master_order:
                         existing_master_order.append(job_id)
 
-        # 2. Determine input tabs from sheet_sources.json
+        # 2. Determine input sources from sheet_sources.json
         sources_cfg = Path("config/sheet_sources.json")
-        input_tabs = ["Omni-Video", "Auto-Video-Factory"]
+        sources_list = [
+            {"name": "SANPHAM", "tab_name": "SANPHAM", "sheet_url": "https://docs.google.com/spreadsheets/d/1U0b6_aVJJ93i5-V1RV1jUsQ9dhLYCY9BcJMI7R6J2C0/"},
+            {"name": "Omni-Video", "tab_name": "Omni-Video"},
+            {"name": "Auto-Video-Factory", "tab_name": "Auto-Video-Factory"},
+        ]
         if sources_cfg.exists():
             try:
                 with open(sources_cfg, "r", encoding="utf-8") as f:
-                    cfg_tabs = json.load(f).get("sources", [])
-                    if cfg_tabs:
-                        input_tabs = [t.get("tab_name", "") for t in cfg_tabs if t.get("tab_name")]
+                    cfg_sources = json.load(f).get("sources", [])
+                    if cfg_sources:
+                        sources_list = cfg_sources
             except Exception:
                 pass
 
+        if source_filter and source_filter.lower() != "all":
+            clean_filter = source_filter.strip().lower()
+            filtered_sources = [
+                s for s in sources_list
+                if s.get("tab_name", "").lower() == clean_filter
+                or s.get("name", "").lower() == clean_filter
+                or clean_filter in s.get("tab_name", "").lower()
+                or clean_filter in s.get("name", "").lower()
+            ]
+            if filtered_sources:
+                sources_list = filtered_sources
+
         input_data_map = {}
         new_items_order = []
+        tabs_scanned = []
 
-        # 3. Read rows dynamically from each input tab
-        for tab_name in input_tabs:
+        # 3. Read rows dynamically from each input source
+        for src in sources_list:
+            tab_name = src.get("tab_name") or src.get("name", "")
+            if not tab_name:
+                continue
+
+            target_sh = self.sh
+            custom_url = src.get("sheet_url")
+            if custom_url and self.gc:
+                try:
+                    target_sh = self.gc.open_by_url(custom_url)
+                except Exception as e:
+                    logger.warning(f"Could not open custom sheet_url '{custom_url}': {e}")
+                    target_sh = self.sh
+
             try:
-                ws = self.sh.worksheet(tab_name)
-            except gspread.exceptions.WorksheetNotFound:
+                ws = target_sh.worksheet(tab_name)
+            except Exception:
                 continue
 
             tab_values = ws.get_all_values()
             if len(tab_values) < 2:
                 continue
 
-            headers = [h.strip() for h in tab_values[0]]
+            tabs_scanned.append(f"{target_sh.title} -> {tab_name}")
+
+            # Check whether Row 1 or Row 2 contains technical headers (e.g. SANPHAM has grouped headers in Row 1)
+            header_row_idx = 0
+            if len(tab_values) > 1:
+                row1_str = " ".join(tab_values[0]).lower()
+                row2_str = " ".join(tab_values[1]).lower()
+                if ("product_code" in row2_str or "content_files" in row2_str) and "product_code" not in row1_str:
+                    header_row_idx = 1
+
+            headers = [h.strip() for h in tab_values[header_row_idx]]
+            data_rows = tab_values[header_row_idx + 1:]
             
             def find_idx(possible_names):
                 header_norms = {normalize_header(h): i for i, h in enumerate(headers) if h}
@@ -150,51 +192,142 @@ class GoogleSheetDirectClient:
                         return header_norms[norm_p]
                 return -1
 
-            id_idx = find_idx(["job_id", "Mã sản phẩm", "Project ID", "SKU", "Video ID", "itemId"])
-            title_idx = find_idx(["title", "Tên sản phẩm", "Video Title", "Tên SP", "productName"])
-            caption_idx = find_idx(["raw_caption", "Caption & Hashtags", "caption", "Mô tả bài đăng", "Chi tiết sản phẩm", "Hashtags", "Mô tả", "description"])
-            video_idx = find_idx(["video_path", "Output File", "Video File Path", "output_path", "video_url"])
-            link_idx = find_idx(["shopee_link", "Link ưu đãi", "Affiliate Link", "Link sản phẩm", "shopeeLink"])
-            fb_brand_idx = find_idx(["brand_fb", "Fanpage Facebook", "Brand FB"])
-            yt_brand_idx = find_idx(["brand_yt", "Kênh YouTube", "Brand YT"])
-            ig_brand_idx = find_idx(["brand_ig", "Kênh Instagram", "Brand IG"])
-            tt_brand_idx = find_idx(["brand_tt", "Kênh TikTok", "Brand TT", "TikTok Brand"])
+            is_sanpham_tab = ("sanpham" in tab_name.lower()) or ("san_pham" in tab_name.lower())
 
-            for row in tab_values[1:]:
-                if not row or not any(row):
-                    continue
-                
-                raw_id = row[id_idx].strip() if id_idx != -1 and id_idx < len(row) else ""
-                if not raw_id or raw_id in input_data_map:
-                    continue
+            if is_sanpham_tab:
+                code_idx = find_idx(["product_code", "Mã SP", "Mã sản phẩm", "code", "job_id", "SKU"])
+                name_idx = find_idx(["product_name", "Tên sản phẩm", "Tên SP", "name", "title"])
+                files_idx = find_idx(["content_files", "Tư liệu", "Files", "Media", "Tư liệu Media"])
+                path_idx = find_idx(["content_path", "Đường dẫn", "Path", "Folder", "Thư mục Media"])
+                cat_idx = find_idx(["Tên Ngành Hàng", "Ngành hàng", "Category", "Tên ngành hàng"])
+                desc_idx = find_idx(["product_description", "Mô tả", "Chi tiết", "Description"])
+                price_idx = find_idx(["product_price", "Giá", "Price", "Giá bán"])
+                color_idx = find_idx(["product_color", "Màu sắc", "Color"])
+                link_idx = find_idx(["shopee_link", "Link Shopee", "Affiliate Link", "Link"])
 
-                title_val = row[title_idx].strip() if title_idx != -1 and title_idx < len(row) else ""
-                raw_cap_val = row[caption_idx].strip() if caption_idx != -1 and caption_idx < len(row) else ""
-                video_val = row[video_idx].strip() if video_idx != -1 and video_idx < len(row) else ""
-                link_val = row[link_idx].strip() if link_idx != -1 and link_idx < len(row) else ""
-                b_fb = row[fb_brand_idx].strip() if fb_brand_idx != -1 and fb_brand_idx < len(row) else ""
-                b_yt = row[yt_brand_idx].strip() if yt_brand_idx != -1 and yt_brand_idx < len(row) else ""
-                b_ig = row[ig_brand_idx].strip() if ig_brand_idx != -1 and ig_brand_idx < len(row) else ""
-                b_tt = row[tt_brand_idx].strip() if tt_brand_idx != -1 and tt_brand_idx < len(row) else ""
+                for row in data_rows:
+                    if not row or not any(row):
+                        continue
+                    
+                    raw_id = row[code_idx].strip() if code_idx != -1 and code_idx < len(row) else ""
+                    if not raw_id or raw_id in input_data_map:
+                        continue
 
-                input_data_map[raw_id] = {
-                    "raw_id": raw_id,
-                    "title_val": title_val,
-                    "raw_cap_val": raw_cap_val,
-                    "video_val": video_val,
-                    "link_val": link_val,
-                    "b_fb": b_fb,
-                    "b_yt": b_yt,
-                    "b_ig": b_ig,
-                    "b_tt": b_tt,
-                }
-                if raw_id not in existing_master and raw_id not in new_items_order:
-                    new_items_order.append(raw_id)
+                    # Filter: Only process rows where content_files contains "VIDEO"
+                    files_val = row[files_idx].strip() if files_idx != -1 and files_idx < len(row) else ""
+                    if "video" not in files_val.lower():
+                        continue
+
+                    title_val = row[name_idx].strip() if name_idx != -1 and name_idx < len(row) else raw_id
+                    folder_path = row[path_idx].strip() if path_idx != -1 and path_idx < len(row) else ""
+                    cat_val = row[cat_idx].strip() if cat_idx != -1 and cat_idx < len(row) else ""
+                    desc_val = row[desc_idx].strip() if desc_idx != -1 and desc_idx < len(row) else ""
+                    price_val = row[price_idx].strip() if price_idx != -1 and price_idx < len(row) else ""
+                    color_val = row[color_idx].strip() if color_idx != -1 and color_idx < len(row) else ""
+                    link_val = row[link_idx].strip() if link_idx != -1 and link_idx < len(row) else ""
+
+                    # Resolve video files in content_path
+                    video_val = ""
+                    initial_status = "needs_edit"
+
+                    if folder_path:
+                        f_p = Path(folder_path)
+                        if f_p.exists() and f_p.is_dir():
+                            video_exts = ("*.mp4", "*.MP4", "*.mov", "*.MOV", "*.mkv", "*.avi")
+                            found_videos = []
+                            for ext in video_exts:
+                                found_videos.extend(list(f_p.glob(ext)))
+                            found_videos = sorted(list(set([v for v in found_videos if not v.name.startswith(".")])))
+
+                            if len(found_videos) == 1:
+                                video_val = str(found_videos[0].resolve())
+                                initial_status = "needs_edit"
+                            elif len(found_videos) > 1:
+                                video_val = f"⚠️ Phát hiện {len(found_videos)} video: " + ", ".join([v.name for v in found_videos])
+                                initial_status = "not_configured"
+                            else:
+                                video_val = ""
+                                initial_status = "not_configured"
+                        elif f_p.is_file() and str(f_p).lower().endswith((".mp4", ".mov")):
+                            video_val = str(f_p.resolve())
+                            initial_status = "needs_edit"
+                        else:
+                            video_val = ""
+                            initial_status = "not_configured"
+                    else:
+                        initial_status = "not_configured"
+
+                    context_caption = f"{title_val}\n✔ Mã SP: {raw_id}"
+                    if cat_val:
+                        context_caption += f"\n✔ Ngành hàng: {cat_val}"
+                    if price_val:
+                        context_caption += f"\n✔ Giá: {price_val}"
+                    if color_val:
+                        context_caption += f"\n✔ Màu sắc: {color_val}"
+                    if desc_val:
+                        context_caption += f"\n\n{desc_val}"
+
+                    input_data_map[raw_id] = {
+                        "raw_id": raw_id,
+                        "title_val": title_val,
+                        "raw_cap_val": context_caption,
+                        "video_val": video_val,
+                        "link_val": link_val,
+                        "b_fb": "Hiệu giày Hải Nancy",
+                        "b_yt": "Hiệu giày Hải Nancy",
+                        "b_ig": "Hiệu giày Hải Nancy",
+                        "b_tt": "Hiệu giày Hải Nancy",
+                        "initial_status": initial_status,
+                    }
+                    if raw_id not in existing_master and raw_id not in new_items_order:
+                        new_items_order.append(raw_id)
+
+            else:
+                id_idx = find_idx(["job_id", "Mã sản phẩm", "Project ID", "SKU", "Video ID", "itemId"])
+                title_idx = find_idx(["title", "Tên sản phẩm", "Video Title", "Tên SP", "productName"])
+                caption_idx = find_idx(["raw_caption", "Caption & Hashtags", "caption", "Mô tả bài đăng", "Chi tiết sản phẩm", "Hashtags", "Mô tả", "description"])
+                video_idx = find_idx(["video_path", "Output File", "Video File Path", "output_path", "video_url"])
+                link_idx = find_idx(["shopee_link", "Link ưu đãi", "Affiliate Link", "Link sản phẩm", "shopeeLink"])
+                fb_brand_idx = find_idx(["brand_fb", "Fanpage Facebook", "Brand FB"])
+                yt_brand_idx = find_idx(["brand_yt", "Kênh YouTube", "Brand YT"])
+                ig_brand_idx = find_idx(["brand_ig", "Kênh Instagram", "Brand IG"])
+                tt_brand_idx = find_idx(["brand_tt", "Kênh TikTok", "Brand TT", "TikTok Brand"])
+
+                for row in tab_values[1:]:
+                    if not row or not any(row):
+                        continue
+                    
+                    raw_id = row[id_idx].strip() if id_idx != -1 and id_idx < len(row) else ""
+                    if not raw_id or raw_id in input_data_map:
+                        continue
+
+                    title_val = row[title_idx].strip() if title_idx != -1 and title_idx < len(row) else ""
+                    raw_cap_val = row[caption_idx].strip() if caption_idx != -1 and caption_idx < len(row) else ""
+                    video_val = row[video_idx].strip() if video_idx != -1 and video_idx < len(row) else ""
+                    link_val = row[link_idx].strip() if link_idx != -1 and link_idx < len(row) else ""
+                    b_fb = row[fb_brand_idx].strip() if fb_brand_idx != -1 and fb_brand_idx < len(row) else ""
+                    b_yt = row[yt_brand_idx].strip() if yt_brand_idx != -1 and yt_brand_idx < len(row) else ""
+                    b_ig = row[ig_brand_idx].strip() if ig_brand_idx != -1 and ig_brand_idx < len(row) else ""
+                    b_tt = row[tt_brand_idx].strip() if tt_brand_idx != -1 and tt_brand_idx < len(row) else ""
+
+                    input_data_map[raw_id] = {
+                        "raw_id": raw_id,
+                        "title_val": title_val,
+                        "raw_cap_val": raw_cap_val,
+                        "video_val": video_val,
+                        "link_val": link_val,
+                        "b_fb": b_fb,
+                        "b_yt": b_yt,
+                        "b_ig": b_ig,
+                        "b_tt": b_tt,
+                    }
+                    if raw_id not in existing_master and raw_id not in new_items_order:
+                        new_items_order.append(raw_id)
 
         # 4. Build combined list: Preserve existing Master rows order, then append brand new rows at the bottom
         all_ordered_ids = []
         for j_id in existing_master_order:
-            if j_id in input_data_map:
+            if j_id not in all_ordered_ids:
                 all_ordered_ids.append(j_id)
         for j_id in new_items_order:
             if j_id not in all_ordered_ids:
@@ -202,15 +335,26 @@ class GoogleSheetDirectClient:
 
         all_input_rows = []
         for raw_id in all_ordered_ids:
-            inp = input_data_map[raw_id]
-            title_val = inp["title_val"]
-            raw_cap_val = inp["raw_cap_val"]
-            video_val = inp["video_val"]
-            link_val = inp["link_val"]
-            b_fb = inp["b_fb"]
-            b_yt = inp["b_yt"]
-            b_ig = inp["b_ig"]
-            b_tt = inp["b_tt"]
+            if raw_id in input_data_map:
+                inp = input_data_map[raw_id]
+                title_val = inp["title_val"]
+                raw_cap_val = inp["raw_cap_val"]
+                video_val = inp["video_val"]
+                link_val = inp["link_val"]
+                b_fb = inp["b_fb"]
+                b_yt = inp["b_yt"]
+                b_ig = inp["b_ig"]
+                b_tt = inp["b_tt"]
+            else:
+                prev = existing_master.get(raw_id, {})
+                title_val = prev.get("title", "")
+                raw_cap_val = prev.get("caption_fb", "")
+                video_val = prev.get("video_path", "")
+                link_val = prev.get("shopee_link", "")
+                b_fb = prev.get("brand_fb", "Default")
+                b_yt = prev.get("brand_yt", "Default")
+                b_ig = prev.get("brand_ig", "Default")
+                b_tt = prev.get("brand_tt", "Default")
 
             base_text = raw_cap_val or title_val
             is_existing = raw_id in existing_master
@@ -225,15 +369,23 @@ class GoogleSheetDirectClient:
                 cap_shopee = prev.get("caption_shopee") or base_text
                 cap_zalo = prev.get("caption_zalo") or base_text
 
-                # Preserve existing status
-                st_fb = prev.get("status_fb") or "needs_edit"
-                st_yt = prev.get("status_yt") or "needs_edit"
-                st_ig = prev.get("status_ig") or "needs_edit"
-                st_tt = prev.get("status_tt") or "needs_edit"
-                st_shopee = prev.get("status_shopee") or "needs_edit"
-                st_zalo = prev.get("status_zalo") or "needs_edit"
+                # Preserve existing status unless multiple videos warning detected
+                if str(video_val).startswith("⚠️"):
+                    st_fb = "not_configured"
+                    st_yt = "not_configured"
+                    st_ig = "not_configured"
+                    st_tt = "not_configured"
+                    st_shopee = "not_configured"
+                    st_zalo = "not_configured"
+                else:
+                    st_fb = prev.get("status_fb") or "needs_edit"
+                    st_yt = prev.get("status_yt") or "needs_edit"
+                    st_ig = prev.get("status_ig") or "needs_edit"
+                    st_tt = prev.get("status_tt") or "needs_edit"
+                    st_shopee = prev.get("status_shopee") or "needs_edit"
+                    st_zalo = prev.get("status_zalo") or "needs_edit"
             else:
-                # Brand new row: default all captions to raw_caption/title and all statuses to 'needs_edit'
+                # Brand new row: default all captions to raw_caption/title and all statuses to initial_status
                 cap_fb = base_text
                 cap_yt = base_text
                 cap_ig = base_text
@@ -241,21 +393,15 @@ class GoogleSheetDirectClient:
                 cap_shopee = base_text
                 cap_zalo = base_text
 
-                st_fb = "needs_edit"
-                st_yt = "needs_edit"
-                st_ig = "needs_edit"
-                st_tt = "needs_edit"
-                st_shopee = "needs_edit"
-                st_zalo = "needs_edit"
+                init_st = inp.get("initial_status", "needs_edit") if raw_id in input_data_map else "needs_edit"
+                st_fb = init_st
+                st_yt = init_st
+                st_ig = init_st
+                st_tt = init_st
+                st_shopee = init_st
+                st_zalo = init_st
 
-            # Only accept genuine video file paths (excluding image asset directories ending with /)
-            def is_valid_video_path(p: str) -> bool:
-                if not p or str(p).strip().endswith("/"):
-                    return False
-                exts = [".mp4", ".mov", ".avi", ".mkv", ".webm"]
-                return any(str(p).lower().endswith(ext) for ext in exts)
-
-            clean_video_path = video_val if is_valid_video_path(video_val) else (prev.get("video_path", "") if is_valid_video_path(prev.get("video_path", "")) else "")
+            clean_video_path = video_val or prev.get("video_path", "")
 
             master_row = {
                 "job_id": raw_id,
@@ -294,7 +440,7 @@ class GoogleSheetDirectClient:
         return {
             "status": "success",
             "total_synced": len(all_input_rows),
-            "tabs_scanned": input_tabs,
+            "tabs_scanned": tabs_scanned,
         }
 
     def update_master_rows(self, records: List[Dict[str, Any]]) -> int:

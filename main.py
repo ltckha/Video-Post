@@ -84,12 +84,21 @@ def auth_youtube(
 
 
 @app.command()
-def sync_all_sources():
-    """Sync all connected Google Sheet sources configured in config/sheet_sources.json."""
-    console.print("[bold blue]🔄 Syncing all connected Google Sheet sources with Gemini AI...[/bold blue]")
-    from core.sheet_importer import sync_all_sources as do_sync
-    count = do_sync()
-    console.print(f"[bold green]✅ Sync complete! Total processed jobs: {count}[/bold green]")
+def sync_all_sources(
+    source: str = typer.Option("all", "--source", "-s", help="Tên nguồn/tab cần quét (SANPHAM, Omni-Video, Auto-Video-Factory, hoặc all)"),
+):
+    """Quét dữ liệu từ các Tab đầu vào và cập nhật trực tiếp vào Tab Master."""
+    from core.sheet_client import GoogleSheetDirectClient
+
+    source_label = "TẤT CẢ các Tab đầu vào" if source.lower() == "all" else f"Tab '{source}'"
+    console.print(f"\n[bold cyan]📥 ĐANG QUÉT DỮ LIỆU TỪ: {source_label}...[/bold cyan]")
+    
+    try:
+        sc = GoogleSheetDirectClient()
+        res = sc.sync_input_tabs_to_master(source_filter=source)
+        console.print(f"[bold green]🎉 Hoàn tất! Đã quét các tab {res.get('tabs_scanned')}, tổng cộng {res.get('total_synced')} dòng trên Tab Master.[/bold green]\n")
+    except Exception as e:
+        console.print(f"[bold red]❌ Lỗi khi quét dữ liệu: {e}[/bold red]\n")
 
 
 @app.command()
@@ -860,7 +869,16 @@ def tiktok_check_cookies():
 
     console.print("\n[bold cyan]🍪 ĐANG KIỂM TRA SỨC KHỎE COOKIE TIKTOK CÁC THƯƠNG HIỆU...[/bold cyan]\n")
     mgr = AccountManager()
-    all_brands = ["Hiệu giày Hải Nancy", "Mua Chuẩn Xài Lâu", "Ờ Đà Lạt vậy thôi", "Macadamia Hải Nancy"]
+    tt_cfg = Path("config/tiktok_accounts.json")
+    all_brands = []
+    if tt_cfg.exists():
+        try:
+            with open(tt_cfg, "r", encoding="utf-8") as f:
+                all_brands = list(json.load(f).get("accounts", {}).keys())
+        except Exception:
+            pass
+    if not all_brands:
+        all_brands = ["Hiệu giày Hải Nancy", "Mua Chuẩn Xài Lâu", "Ờ Đà Lạt vậy thôi", "Macadamia Hải Nancy", "Yen Handmade Leather", "YenYen Deals", "Elegant Steps"]
 
     for b in all_brands:
         creds = mgr.get_brand_credentials(b, "tiktok")
