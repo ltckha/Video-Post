@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 from pathlib import Path
-from core.sheet_client import GoogleSheetDirectClient
+from core.sheet_client import GoogleSheetDirectClient, MASTER_HEADERS
 
 
 def test_sanpham_tab_filtering_and_mapping(tmp_path):
@@ -34,9 +34,7 @@ def test_sanpham_tab_filtering_and_mapping(tmp_path):
 
         # Mock worksheets
         mock_master_ws = MagicMock()
-        mock_master_ws.get_all_values.return_value = [
-            ["job_id", "title", "video_path", "shopee_link", "caption_fb", "caption_yt", "caption_ig", "caption_tt", "caption_shopee", "caption_zalo", "brand_fb", "brand_yt", "brand_ig", "brand_tt", "status_fb", "status_yt", "status_ig", "status_tt", "status_shopee", "status_zalo"]
-        ]
+        mock_master_ws.get_all_values.return_value = [MASTER_HEADERS]
 
         mock_sanpham_ws = MagicMock()
         mock_sanpham_ws.get_all_values.return_value = sanpham_rows
@@ -61,14 +59,14 @@ def test_sanpham_tab_filtering_and_mapping(tmp_path):
         
         # Row 0: Headers, Row 1: RV36330N (Only 1 product because 959D had no VIDEO)
         assert len(written_matrix) == 2
-        row_rv = written_matrix[1]
-        assert row_rv[0] == "RV36330N"  # job_id
-        assert row_rv[1] == "Giày Cao Gót Nữ Sang Trọng"  # title
-        assert str(video_file.resolve()) in row_rv[2]  # video_path
-        assert row_rv[10] == "Hiệu giày Hải Nancy"  # brand_fb
-        assert row_rv[13] == "Hiệu giày Hải Nancy"  # brand_tt
-        assert row_rv[14] == "needs_edit"  # status_fb
-        assert row_rv[17] == "needs_edit"  # status_tt
+        row_rv = dict(zip(MASTER_HEADERS, written_matrix[1]))
+        assert row_rv["job_id"] == "RV36330N"
+        assert row_rv["title"] == "Giày Cao Gót Nữ Sang Trọng"
+        assert str(video_file.resolve()) in row_rv["video_path"]
+        assert row_rv["brand_fb"] == "Hiệu giày Hải Nancy"
+        assert row_rv["brand_tt"] == "Hiệu giày Hải Nancy"
+        assert row_rv["status_fb"] == "needs_edit"
+        assert row_rv["status_tt"] == "needs_edit"
 
 
 def test_sanpham_multiple_videos_marks_not_configured(tmp_path):
@@ -92,9 +90,7 @@ def test_sanpham_multiple_videos_marks_not_configured(tmp_path):
         client.sh = MagicMock()
 
         mock_master_ws = MagicMock()
-        mock_master_ws.get_all_values.return_value = [
-            ["job_id", "title", "video_path", "shopee_link", "caption_fb", "caption_yt", "caption_ig", "caption_tt", "caption_shopee", "caption_zalo", "brand_fb", "brand_yt", "brand_ig", "brand_tt", "status_fb", "status_yt", "status_ig", "status_tt", "status_shopee", "status_zalo"]
-        ]
+        mock_master_ws.get_all_values.return_value = [MASTER_HEADERS]
         mock_sanpham_ws = MagicMock()
         mock_sanpham_ws.get_all_values.return_value = sanpham_rows
 
@@ -115,19 +111,30 @@ def test_sanpham_multiple_videos_marks_not_configured(tmp_path):
         written_matrix = update_calls[0].kwargs.get("values") or update_calls[0][0][0]
         
         assert len(written_matrix) == 2
-        row = written_matrix[1]
-        assert row[0] == "MULTI99"
-        assert "⚠️ Phát hiện 2 video" in row[2]
-        assert row[14] == "not_configured"  # status_fb
-        assert row[17] == "not_configured"  # status_tt
+        row = dict(zip(MASTER_HEADERS, written_matrix[1]))
+        assert row["job_id"] == "MULTI99"
+        assert "⚠️ Phát hiện 2 video" in row["video_path"]
+        assert row["status_fb"] == "not_configured"
+        assert row["status_tt"] == "not_configured"
 
 
 def test_sanpham_deduplication_preserves_existing_rows():
     """Test that syncing SANPHAM skips products already on Tab Master."""
+    old_row_dict = {h: "" for h in MASTER_HEADERS}
+    old_row_dict.update({
+        "job_id": "RV36330N",
+        "title": "Giày Cao Gót Cũ",
+        "video_path": "/path/old.mp4",
+        "post_before": "20/10/2026",
+        "caption_fb": "Caption cũ",
+        "brand_fb": "Hiệu giày Hải Nancy",
+        "brand_tt": "Hiệu giày Hải Nancy",
+        "status_fb": "published",
+        "status_tt": "published",
+    })
     mock_master_rows = [
-        ["job_id", "title", "video_path", "shopee_link", "caption_fb", "caption_yt", "caption_ig", "caption_tt", "caption_shopee", "caption_zalo", "brand_fb", "brand_yt", "brand_ig", "brand_tt", "status_fb", "status_yt", "status_ig", "status_tt", "status_shopee", "status_zalo"],
-        # Existing published product
-        ["RV36330N", "Giày Cao Gót Cũ", "/path/old.mp4", "", "Caption cũ", "", "", "", "", "", "Hiệu giày Hải Nancy", "Hiệu giày Hải Nancy", "Hiệu giày Hải Nancy", "Hiệu giày Hải Nancy", "published", "published", "published", "published", "published", "published"]
+        MASTER_HEADERS,
+        [old_row_dict.get(h, "") for h in MASTER_HEADERS]
     ]
 
     sanpham_rows = [
@@ -161,9 +168,10 @@ def test_sanpham_deduplication_preserves_existing_rows():
         update_calls = mock_master_ws.update.call_args_list
         written_matrix = update_calls[0].kwargs.get("values") or update_calls[0][0][0]
         
-        # Must preserve original published status and captions
+        # Must preserve original published status, post_before, and captions
         assert len(written_matrix) == 2
-        row_rv = written_matrix[1]
-        assert row_rv[0] == "RV36330N"
-        assert row_rv[4] == "Caption cũ"
-        assert row_rv[14] == "published"
+        row_rv = dict(zip(MASTER_HEADERS, written_matrix[1]))
+        assert row_rv["job_id"] == "RV36330N"
+        assert row_rv["caption_fb"] == "Caption cũ"
+        assert row_rv["post_before"] == "20/10/2026"
+        assert row_rv["status_fb"] == "published"

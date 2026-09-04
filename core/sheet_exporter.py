@@ -22,6 +22,8 @@ MASTER_HEADERS = [
     "job_id",
     "title",
     "video_path",
+    "post_before",
+    "content_type",
     "shopee_link",
     "caption_fb",
     "caption_yt",

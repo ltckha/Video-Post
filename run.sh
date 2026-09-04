@@ -67,6 +67,7 @@ for k, var in [
     ('Ờ Đà Lạt vậy thôi', 'ST_DALAT'),
     ('Yen Handmade Leather', 'ST_YEN'),
     ('YenYen Deals', 'ST_YENYEN'),
+    ('YenYen Farm', 'ST_YENYENFARM'),
     ('Elegant Steps', 'ST_ELEGANT')
 ]:
     is_act = accs.get(k, {}).get('status') == 'active'
@@ -82,10 +83,11 @@ for k, var in [
                 echo " 4) 🌲 Ờ Đà Lạt vậy thôi $ST_DALAT"
                 echo " 5) 👜 Yen Handmade Leather $ST_YEN"
                 echo " 6) 🏷️ YenYen Deals $ST_YENYEN"
-                echo " 7) 👠 Elegant Steps $ST_ELEGANT"
+                echo " 7) 🌾 YenYen Farm $ST_YENYENFARM"
+                echo " 8) 👠 Elegant Steps $ST_ELEGANT"
                 echo " 0) 🔙 Quay lại Menu chính"
                 echo "=================================================="
-                read -rp "👉 Chọn Brand muốn đăng TikTok (0-7): " tt_post_choice
+                read -rp "👉 Chọn Brand muốn đăng TikTok (0-8): " tt_post_choice
 
                 case $tt_post_choice in
                     1) target_tt_brand="Hiệu giày Hải Nancy" ;;
@@ -94,7 +96,8 @@ for k, var in [
                     4) target_tt_brand="Ờ Đà Lạt vậy thôi" ;;
                     5) target_tt_brand="Yen Handmade Leather" ;;
                     6) target_tt_brand="YenYen Deals" ;;
-                    7) target_tt_brand="Elegant Steps" ;;
+                    7) target_tt_brand="YenYen Farm" ;;
+                    8) target_tt_brand="Elegant Steps" ;;
                     0) continue ;;
                     *) target_tt_brand="Hiệu giày Hải Nancy" ;;
                 esac

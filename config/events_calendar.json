@@ -1,0 +1,143 @@
+{
+  "lunar_events": {
+    "mid_autumn": {
+      "name": "Tết Trung Thu",
+      "keywords": [
+        "lồng đèn", "long den", "bánh trung thu", "banh trung thu",
+        "rước đèn", "ruoc den", "phá cỗ", "pha co", "chị hằng", "chi hang",
+        "chú cuội", "chu cuoi", "trung thu", "trăng rằm", "trang ram", "đèn ông sao"
+      ],
+      "dates": {
+        "2025": "06/10/2025",
+        "2026": "25/09/2026",
+        "2027": "15/09/2027",
+        "2028": "03/10/2028",
+        "2029": "22/09/2029",
+        "2030": "12/09/2030"
+      }
+    },
+    "lunar_new_year": {
+      "name": "Tết Nguyên Đán",
+      "keywords": [
+        "tết nguyên đán", "tet nguyen dan", "bánh chưng", "banh chung",
+        "bánh tét", "banh tet", "lì xì", "li xi", "hoa mai", "hoa đào",
+        "mứt tết", "mut tet", "chúc tết", "chuc tet", "du xuân", "du xuan",
+        "đón tết", "don tet", "sắm tết", "sam tet"
+      ],
+      "dates": {
+        "2025": "28/01/2025",
+        "2026": "16/02/2026",
+        "2027": "05/02/2027",
+        "2028": "25/01/2028",
+        "2029": "12/02/2029",
+        "2030": "02/02/2030"
+      }
+    },
+    "hung_kings": {
+      "name": "Giỗ Tổ Hùng Vương",
+      "keywords": [
+        "giỗ tổ", "gio to", "hùng vương", "hung vuong", "đền hùng"
+      ],
+      "dates": {
+        "2025": "07/04/2025",
+        "2026": "26/04/2026",
+        "2027": "16/04/2027",
+        "2028": "04/04/2028",
+        "2029": "22/04/2029",
+        "2030": "11/04/2030"
+      }
+    }
+  },
+  "solar_events": [
+    {
+      "name": "Mùa Khai Giảng / Tựu Trường",
+      "day_month": "05/09",
+      "keywords": [
+        "tựu trường", "tuu truong", "khai giảng", "khai giang",
+        "năm học mới", "nam hoc moi", "back to school", "cặp sách", "balo học sinh", "đi học"
+      ]
+    },
+    {
+      "name": "Quốc Khánh 2/9",
+      "day_month": "02/09",
+      "keywords": [
+        "quốc khánh", "quoc khanh", "2/9", "2-9", "02/09", "02-09",
+        "tết độc lập", "tet doc lap", "nghỉ lễ 2/9"
+      ]
+    },
+    {
+      "name": "Ngày Phụ Nữ Việt Nam 20/10",
+      "day_month": "20/10",
+      "keywords": [
+        "20/10", "20-10", "phụ nữ việt nam", "phu nu viet nam",
+        "quà tặng mẹ", "qua tang me", "quà 20/10", "tri ân phái đẹp", "tôn vinh phái đẹp"
+      ]
+    },
+    {
+      "name": "Ngày Nhà Giáo Việt Nam 20/11",
+      "day_month": "20/11",
+      "keywords": [
+        "20/11", "20-11", "nhà giáo", "nha giao", "thầy cô", "thay co",
+        "tri ân thầy cô", "quà 20/11", "người lái đò"
+      ]
+    },
+    {
+      "name": "Giáng Sinh (Noel)",
+      "day_month": "25/12",
+      "keywords": [
+        "giáng sinh", "giang sinh", "noel", "cây thông", "cay thong",
+        "ông già noel", "tuần lộc", "tuyết trắng", "christmas", "xmas", "chuông noel"
+      ]
+    },
+    {
+      "name": "Tết Dương Lịch",
+      "day_month": "01/01",
+      "keywords": [
+        "tết dương lịch", "tet duong lich", "năm mới", "happy new year", "new year 202"
+      ]
+    },
+    {
+      "name": "Lễ Tình Nhân (Valentine)",
+      "day_month": "14/02",
+      "keywords": [
+        "valentine", "lễ tình nhân", "le tinh nhan", "14/2", "14-2",
+        "socola", "chocolate", "quà tặng người yêu", "quà tặng bạn gái"
+      ]
+    },
+    {
+      "name": "Quốc Tế Phụ Nữ 8/3",
+      "day_month": "08/03",
+      "keywords": [
+        "8/3", "8-3", "08/03", "quốc tế phụ nữ", "quoc te phu nu",
+        "quà 8/3", "ngày phụ nữ"
+      ]
+    },
+    {
+      "name": "Giải Phóng Miền Nam & Quốc Tế Lao Động",
+      "day_month": "30/04",
+      "keywords": [
+        "30/4", "30-4", "1/5", "1-5", "giải phóng", "giai phong", "quốc tế lao động"
+      ]
+    },
+    {
+      "name": "Siêu Sale 9.9",
+      "day_month": "09/09",
+      "keywords": ["sale 9.9", "sale 9/9", "siêu sale 9.9", "mega sale 9.9"]
+    },
+    {
+      "name": "Siêu Sale 10.10",
+      "day_month": "10/10",
+      "keywords": ["sale 10.10", "sale 10/10", "siêu sale 10.10", "mega sale 10.10"]
+    },
+    {
+      "name": "Siêu Sale 11.11",
+      "day_month": "11/11",
+      "keywords": ["sale 11.11", "sale 11/11", "siêu sale 11.11", "độc thân 11.11", "mega sale 11.11"]
+    },
+    {
+      "name": "Siêu Sale 12.12",
+      "day_month": "12/12",
+      "keywords": ["sale 12.12", "sale 12/12", "siêu sale 12.12", "mega sale 12.12"]
+    }
+  ]
+}

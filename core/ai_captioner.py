@@ -95,7 +95,7 @@ class AICaptionGenerator:
                     target_audience=target_audience,
                     brand_tone=brand_tone,
                 )
-                if captions and len(captions) == 6:
+                if captions and len(captions) >= 6:
                     DAILY_API_REQUEST_COUNT += 1
                     logger.info(
                         f"Successfully generated captions via Gemini API ({self.model_name})! (Daily API count: {DAILY_API_REQUEST_COUNT}/{self.max_rpd})"
@@ -103,12 +103,28 @@ class AICaptionGenerator:
                     # Respect RPM rate limit by sleeping specified seconds (default 4s)
                     if self.rpm_delay > 0:
                         time.sleep(self.rpm_delay)
+
+                    # Also detect event deadline (post_before)
+                    from core.event_detector import detect_event_deadline
+                    detected = detect_event_deadline(title=title, description=raw_caption)
+                    if detected:
+                        event_name, deadline_str = detected
+                        captions["post_before"] = deadline_str
+                        captions["detected_event"] = event_name
+
                     return captions
             except Exception as e:
                 logger.warning(f"Gemini API call failed, falling back to rule-based generation: {e}")
 
         # Rule-based fallback if API key not set or limit reached or error occurs
-        return self._generate_fallback_captions(title, raw_caption, affiliate_link, cat_tag)
+        fallback_captions = self._generate_fallback_captions(title, raw_caption, affiliate_link, cat_tag)
+        from core.event_detector import detect_event_deadline
+        detected = detect_event_deadline(title=title, description=raw_caption)
+        if detected:
+            event_name, deadline_str = detected
+            fallback_captions["post_before"] = deadline_str
+            fallback_captions["detected_event"] = event_name
+        return fallback_captions
 
     def generate_tiktok_caption(
         self,

@@ -30,8 +30,12 @@ Hệ thống **Video-Post** là bộ công cụ tự động hóa E-Commerce đa
 ### 3. Đồng Bộ Trực Tiếp Tab Trung Tâm Master Sheet ([`core/sheet_client.py`](file:///Users/khan/Developer/Video-Post/core/sheet_client.py))
 - Kết nối trực tiếp qua **Google Sheets API v4** bằng chìa khóa Service Account ([`config/service_account.json`](file:///Users/khan/Developer/Video-Post/config/service_account.json)) — **Loại bỏ 100% Google Apps Script**.
 - **Cơ Chế Dynamic Header Mapping (100% Không dùng cột cố định)**: Tự động quét dòng 1 trên Google Sheet (`header_map = {normalize(h): col_idx}`) để xác định chính xác tọa độ cột cho từng trường dữ liệu, đảm bảo không bao giờ bị lệch cột.
-- Nạp/cập nhật mảng dữ liệu siêu tốc lên Tab **`Master`** trên Google Sheet với **20 Tiêu Đề Cột Tiếng Anh Ngắn Gọn**:
-  `job_id`, `title`, `video_path`, `shopee_link`, `caption_fb`, `caption_yt`, `caption_ig`, `caption_tt`, `caption_shopee`, `caption_zalo`, `brand_fb`, `brand_yt`, `brand_ig`, `brand_tt`, `status_fb`, `status_yt`, `status_ig`, `status_tt`, `status_shopee`, `status_zalo`.
+- Nạp/cập nhật mảng dữ liệu siêu tốc lên Tab **`Master`** trên Google Sheet với **22 Tiêu Đề Cột Tiếng Anh Ngắn Gọn**:
+  `job_id`, `title`, `video_path`, `post_before`, `content_type`, `shopee_link`, `caption_fb`, `caption_yt`, `caption_ig`, `caption_tt`, `caption_shopee`, `caption_zalo`, `brand_fb`, `brand_yt`, `brand_ig`, `brand_tt`, `status_fb`, `status_yt`, `status_ig`, `status_tt`, `status_shopee`, `status_zalo`.
+- **Cơ Chế Ưu Tiên Hạn Chót & Đăng Xen Kẽ Đa Trụ Cột (Smart Interleaving)** ([`core/queue_scheduler.py`](file:///Users/khan/Developer/Video-Post/core/queue_scheduler.py)): 
+  - Phân tầng 5 cấp độ theo `post_before` (khẩn cấp $\le 3$ ngày lên đầu).
+  - Tự động nhận diện 5 loại `content_type`: `real_product`, `ai_product`, `real_accessory`, `ai_accessory`, `tips_tricks`.
+  - Luân phiên xen kẽ (Round-Robin) các loại nội dung chống "một màu" kênh. Hỗ trợ đăng nhiều bài/ngày (`--limit`).
 
 ### 4. Đăng Bài Tự Động (1-Click Multi-Platform Auto Post)
 - **1-Click Auto Post (`main.py auto-post-active`)**: Tự động phát hiện các Brand & Nền tảng đã hoàn tất thiết lập Token/Cookie (FB, YT, IG, TT). Tự động lấy 1 video `pending` và xuất bản ngay lập tức mà không cần hỏi lại, cập nhật đồng loạt `status = published` trên Google Sheet.
@@ -46,4 +50,6 @@ Hệ thống **Video-Post** là bộ công cụ tự động hóa E-Commerce đa
 ## 💡 Ý Tưởng & Tính Năng Phát Triển Tiếp Theo ([`docs/IDEAS.md`](file:///Users/khan/Developer/Video-Post/docs/IDEAS.md))
 1. **Đưa sản phẩm vào Instagram từ link Shopee**: Tự động trích xuất thông tin sản phẩm và tích hợp link/sản phẩm vào bài đăng Instagram Reels/Story/Post.
 2. **Tối ưu hóa hành vi đăng bài TikTok giống người thật**: Bổ sung mô phỏng di chuyển chuột tự nhiên (Bezier Curve), ngắt nghỉ gõ phím (Human Keystroke Dynamics), lướt trang ngẫu nhiên trước khi upload nhằm chống bị TikTok quét chặn và bóp tương tác.
+3. **AI Market Intelligence Pipeline**: Kết hợp Gemini chạy định kỳ (hàng ngày/hàng tuần) tự động thu thập thông tin thời tiết, lễ hội, xu hướng sàn TMĐT để tối ưu hóa và tự động đẩy `post_before` cho các video đón đầu mùa vụ.
+
 

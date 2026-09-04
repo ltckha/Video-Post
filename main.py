@@ -62,28 +62,6 @@ def test_auth(
 
 
 @app.command()
-def auth_youtube(
-    client_secret: str = typer.Option("client_secret.json", help="Path to client_secret.json downloaded from Google Cloud"),
-    token_path: str = typer.Option("config/tokens/youtube_token.json", help="Path to save the generated token"),
-):
-    """Run interactive Google OAuth flow in browser to authenticate YouTube channel."""
-    import os
-    if not os.path.exists(client_secret):
-        console.print(f"[bold red]❌ Không tìm thấy tệp '{client_secret}'![/bold red]")
-        console.print("[yellow]Vui lòng tải tệp OAuth Client ID JSON từ Google Cloud Console và lưu thành 'client_secret.json' ở thư mục dự án.[/yellow]")
-        return
-
-    console.print(f"[bold blue]🔑 Đang mở trình duyệt để xác thực tài khoản YouTube Google (Token lưu tại: {token_path})...[/bold blue]")
-    try:
-        yt = YouTubeConnector(token_path=token_path)
-        yt.run_local_oauth_flow(client_secret)
-        console.print(f"[bold green]🎉 Xác thực thành công! Token đã được lưu tự động vào '{token_path}'.[/bold green]")
-    except Exception as e:
-        console.print(f"[bold red]❌ Lỗi xác thực YouTube: {e}[/bold red]")
-
-
-
-@app.command()
 def sync_all_sources(
     source: str = typer.Option("all", "--source", "-s", help="Tên nguồn/tab cần quét (SANPHAM, Omni-Video, Auto-Video-Factory, hoặc all)"),
 ):
@@ -219,6 +197,12 @@ def process_queue(
     else:
         target_p_list = ["facebook", "youtube", "instagram"]
 
+    alias_map = {
+        "maccadamia hải nancy": "Macadamia Hải Nancy",
+        "yen handemade leather": "Yen Handmade Leather",
+        "ở đà lạt vậy thôi": "Ờ Đà Lạt vậy thôi",
+    }
+
     # Collect ALL available brands dynamically with NFC Unicode normalization
     brand_dict = {}
     for p in target_p_list:
@@ -231,8 +215,9 @@ def process_queue(
                     with open(cfg_path, "r", encoding="utf-8") as f:
                         for b_k in json.load(f).get("pages", {}).keys():
                             n_b = norm_text(b_k)
-                            if n_b and n_b.lower() not in brand_dict:
-                                brand_dict[n_b.lower()] = n_b
+                            c_b = alias_map.get(n_b.lower(), n_b)
+                            if c_b and c_b.lower() not in brand_dict:
+                                brand_dict[c_b.lower()] = c_b
                 except Exception:
                     pass
         elif p == "youtube":
@@ -242,15 +227,18 @@ def process_queue(
                     with open(cfg_path, "r", encoding="utf-8") as f:
                         for b_k in json.load(f).get("channels", {}).keys():
                             n_b = norm_text(b_k)
-                            if n_b and n_b.lower() not in brand_dict:
-                                brand_dict[n_b.lower()] = n_b
+                            c_b = alias_map.get(n_b.lower(), n_b)
+                            if c_b and c_b.lower() not in brand_dict:
+                                brand_dict[c_b.lower()] = c_b
                 except Exception:
                     pass
 
         for r in rows:
             b_val = norm_text(r.get(f"brand_{short_p}", ""))
-            if b_val and b_val.lower() not in brand_dict:
-                brand_dict[b_val.lower()] = b_val
+            if b_val:
+                c_b = alias_map.get(b_val.lower(), b_val)
+                if c_b and c_b.lower() not in brand_dict:
+                    brand_dict[c_b.lower()] = c_b
 
     sorted_brands = sorted(list(brand_dict.values()))
 
@@ -344,7 +332,11 @@ def process_queue(
             console.print(f"[bold green]✨ Không có bài nào đang ở trạng thái 'pending'{brand_msg} cho kênh [{platform_name}] trên Tab Master.[/bold green]")
             return
 
-        # Pick the FIRST job in order from top to bottom (FIFO)
+        # Prioritize jobs based on post_before deadline (Urgent < 3d -> Golden Window 3-15d -> Regular FIFO -> Future -> Expired)
+        from core.queue_scheduler import sort_jobs_by_priority, format_deadline_badge
+        matching_rows = sort_jobs_by_priority(matching_rows)
+
+        # Pick the highest priority candidate
         selected_row = matching_rows[0]
         pending_rows = [selected_row]
 
@@ -357,6 +349,7 @@ def process_queue(
         job_id = r.get("job_id", "")
         title = r.get("title", "")
         video_path = r.get("video_path", "")
+        post_before = r.get("post_before", "")
 
         # Prepare active platforms for this row
         active_platforms = []
@@ -378,6 +371,17 @@ def process_queue(
         console.print(f"🎬 [bold magenta]BÀI VIẾT #{job_id}: {title}[/bold magenta]")
         console.print(f"🌍 [bold]Nền tảng kiểm duyệt:[/bold] {', '.join(active_platforms).upper()}")
         console.print(f"📁 [bold]File Video:[/bold] {video_path}")
+
+        c_type = r.get("content_type", "")
+        if c_type:
+            from core.queue_scheduler import format_content_type_badge
+            console.print(f"  {format_content_type_badge(c_type)}")
+
+        if post_before:
+            from core.queue_scheduler import format_deadline_badge
+            badge = format_deadline_badge(post_before)
+            if badge:
+                console.print(f"  {badge}")
 
         if brand_map:
             console.print(f"🏢 [bold]Thương hiệu / Fanpage:[/bold] {brand_map}")
@@ -443,10 +447,11 @@ def process_queue(
                 sc = GoogleSheetDirectClient()
                 sc.update_master_rows([updated_rec])
                 for p in active_platforms:
-                    b_name = brand_map.get(p) or r.get(f"brand_{p}") or r.get("brand_fb") or "Default"
-                    sc.record_post_timestamp(brand=b_name, platform=p)
+                    short_p = "fb" if p == "facebook" else ("yt" if p == "youtube" else ("ig" if p == "instagram" else p))
+                    b_name = brand_map.get(p) or r.get(f"brand_{short_p}") or r.get(f"brand_{p}") or r.get("brand_fb") or "Default"
+                    sc.record_post_timestamp(brand=b_name, platform=short_p)
             except Exception as ex:
-                console.print(f"[bold red]❌ Lỗi cập nhật Tab Master: {ex}[/bold red]")
+                console.print(f"[bold red]❌ Lỗi cập nhật Tab Master / Status: {ex}[/bold red]")
 
             processed += 1
         elif choice == "e":
@@ -573,6 +578,12 @@ def rewrite_needs_edit():
 
         if new_captions:
             updated_rec = dict(r)
+            detected_post_before = new_captions.get("post_before")
+            detected_event = new_captions.get("detected_event")
+            if detected_post_before and not updated_rec.get("post_before"):
+                updated_rec["post_before"] = detected_post_before
+                console.print(f"     🎉 [bold magenta]Tự động nhận diện sự kiện:[/bold magenta] {detected_event} ➡️ Gán post_before = {detected_post_before}")
+
             for p in ["fb", "yt", "ig", "tt", "shopee", "zalo"]:
                 platform_key = "facebook" if p == "fb" else ("youtube" if p == "yt" else ("instagram" if p == "ig" else p))
                 if platform_key in new_captions:
@@ -656,6 +667,13 @@ def rewrite_tiktok_needs_edit(
             updated_rec = dict(r)
             updated_rec["caption_tt"] = new_tt_caption
             updated_rec["status_tt"] = "pending"
+            if not updated_rec.get("post_before"):
+                from core.event_detector import detect_event_deadline
+                detected = detect_event_deadline(title=title, description=raw_cap)
+                if detected:
+                    event_name, deadline_str = detected
+                    updated_rec["post_before"] = deadline_str
+                    console.print(f"      🎉 [bold magenta]Sự kiện phát hiện:[/bold magenta] {event_name} ➡️ Gán post_before = {deadline_str}")
             updated_records.append(updated_rec)
             console.print(f"      ✅ Đã tạo Storytelling TikTok thành công! Chuyển status_tt ➡️ 'pending'.")
 
@@ -710,8 +728,9 @@ def list_jobs():
 
 @app.command()
 def auth_youtube(
-    secret_file: str = typer.Option("giayhainancy_client_secret.json", help="Path to client secret JSON"),
-    channel_name: str = typer.Option("", help="YouTube Channel Name to register"),
+    secret_file: str = typer.Option("config/giayhainancy_client_secret.json", "--secret-file", "-s", help="Đường dẫn file client secret JSON"),
+    channel_name: str = typer.Option("", "--channel-name", "-c", help="Tên kênh YouTube muốn đăng ký"),
+    token_path: str = typer.Option("", "--token-path", "-t", help="Đường dẫn tùy chỉnh lưu file token (tùy chọn)"),
 ):
     """Xác thực OAuth 2.0 để lấy Token cho Kênh YouTube mới."""
     from pathlib import Path
@@ -721,14 +740,31 @@ def auth_youtube(
     if not secret_path.exists():
         if (Path("config") / secret_file).exists():
             secret_path = Path("config") / secret_file
+        elif Path("config/giayhainancy_client_secret.json").exists():
+            secret_path = Path("config/giayhainancy_client_secret.json")
+        elif Path("config/client_secret.json").exists():
+            secret_path = Path("config/client_secret.json")
         else:
-            console.print(f"[bold red]❌ Không tìm thấy file: {secret_file}[/bold red]")
-            return
+            # Check for any client_secret*.json in current dir or config/
+            found_secrets = list(Path("config").glob("*client_secret*.json")) + list(Path(".").glob("*client_secret*.json"))
+            if found_secrets:
+                secret_path = found_secrets[0]
+                console.print(f"[yellow]ℹ️ Tự động nhận diện file OAuth secret: {secret_path}[/yellow]")
+            else:
+                console.print(f"[bold red]❌ Không tìm thấy file OAuth secret: '{secret_file}'[/bold red]")
+                console.print("[yellow]Vui lòng đặt file OAuth Client ID JSON vào thư mục 'config/' hoặc thư mục gốc dự án.[/yellow]")
+                return
 
-    safe_name = secret_path.stem.replace("client_secret_", "").replace("_client_secret", "")
-    token_file = f"config/tokens/youtube_{safe_name}.json"
+    if token_path:
+        token_file = token_path
+    else:
+        safe_name = secret_path.stem.replace("client_secret_", "").replace("_client_secret", "")
+        if safe_name.lower() in ["client_secret", "secret"]:
+            token_file = "config/tokens/youtube_token.json"
+        else:
+            token_file = f"config/tokens/youtube_{safe_name}.json"
     
-    console.print(f"[bold cyan]🔑 Đang khởi động trình duyệt để đăng nhập YouTube ({secret_file})...[/bold cyan]")
+    console.print(f"[bold cyan]🔑 Đang khởi động trình duyệt để đăng nhập YouTube ({secret_path})...[/bold cyan]")
     yt = YouTubeConnector(token_path=token_file)
     yt.run_local_oauth_flow(str(secret_path))
 
@@ -960,12 +996,25 @@ def tiktok_post(
         return
 
     console.print(f"[bold cyan]🔍 Tìm thấy {len(candidates)} bài sẵn sàng đăng TikTok.[/bold cyan]")
+    from core.queue_scheduler import sort_jobs_by_priority, format_deadline_badge
+    candidates = sort_jobs_by_priority(candidates)
     target = candidates[0]
     j_id = target.get("job_id")
     title = target.get("title")
     video_path = target.get("video_path")
+    post_before = target.get("post_before", "")
     caption_tt = target.get("caption_tt") or title
     brand_tt = target.get("brand_tt") or target.get("brand_fb") or "Default"
+
+    c_type = target.get("content_type", "")
+    if c_type:
+        from core.queue_scheduler import format_content_type_badge
+        console.print(f"  {format_content_type_badge(c_type)}")
+
+    if post_before:
+        badge = format_deadline_badge(post_before)
+        if badge:
+            console.print(f"  {badge}")
 
     # Check if brand is active
     if "tt" not in mgr.get_active_platforms_for_brand(brand_tt):
@@ -1088,8 +1137,8 @@ def auto_post_active(
             p_label = "📘 Facebook Reels" if p == "fb" else ("🔴 YouTube Shorts" if p == "yt" else ("📸 Instagram Reels" if p == "ig" else "🎬 TikTok Studio"))
             console.print(f"\n--- 🚀 Đang tìm bài cho nền tảng: [bold cyan]{p_label}[/bold cyan] ---")
 
-            # Find the FIRST candidate row for this brand where status_<p> == 'pending' and video_path is valid
-            candidate = None
+            # Find all candidate rows for this brand where status_<p> == 'pending' and video_path is valid
+            brand_candidates = []
             for r in rows:
                 col_brand = r.get(f"brand_{p}", "").strip() or r.get("brand_fb", "").strip()
                 if col_brand.lower() != b.lower():
@@ -1103,108 +1152,118 @@ def auto_post_active(
                 if not v_path or not Path(v_path).exists():
                     continue
 
-                candidate = r
-                break
+                brand_candidates.append(r)
 
-            if not candidate:
-                console.print(f"  ⏩ [{p.upper()}]: Không tìm thấy bài nào đang 'pending' có video hợp lệ cho '{b}'.")
-                continue
+            # Prioritize candidates by post_before event deadline & interleave by content_type
+            from core.queue_scheduler import sort_jobs_by_priority, format_deadline_badge, format_content_type_badge
+            brand_candidates = sort_jobs_by_priority(brand_candidates)
+            candidates_to_post = brand_candidates[:limit_per_brand]
 
-            j_id = candidate.get("job_id")
-            title = candidate.get("title", "")
-            video_path = candidate.get("video_path", "")
-            caption = candidate.get(f"caption_{p}") or title
+            for candidate in candidates_to_post:
+                j_id = candidate.get("job_id")
+                title = candidate.get("title", "")
+                video_path = candidate.get("video_path", "")
+                post_before = candidate.get("post_before", "")
+                c_type = candidate.get("content_type", "")
+                caption = candidate.get(f"caption_{p}") or title
 
-            console.print(f"  📌 [bold yellow]Job #{j_id}:[/bold yellow] {title}")
-            console.print(f"  🎬 Video: [dim]{video_path}[/dim]")
-            console.print(f"  🚀 Đang đăng [{p.upper()}]...")
+                console.print(f"\n  📌 [bold yellow]Job #{j_id}:[/bold yellow] {title}")
+                if c_type:
+                    console.print(f"     {format_content_type_badge(c_type)}")
+                if post_before:
+                    badge = format_deadline_badge(post_before)
+                    if badge:
+                        console.print(f"     {badge}")
 
-            if dry_run:
-                console.print(f"     ✅ [DRY-RUN] Giả lập đăng thành công [{p.upper()}]!")
-                candidate[f"status_{p}"] = "published"
-                brand_posted_count += 1
-                continue
+                console.print(f"  🎬 Video: [dim]{video_path}[/dim]")
+                console.print(f"  🚀 Đang đăng [{p.upper()}]...")
 
-            # Live upload execution
-            try:
-                if p == "fb":
-                    fb_creds = mgr.get_brand_credentials(b, "facebook")
-                    fb_conn = FacebookConnector()
-                    fb_conn.page_id = fb_creds.get("page_id")
-                    fb_conn.access_token = fb_creds.get("access_token")
-                    meta = PostMetadata(title=title, description=caption)
-                    res = fb_conn.upload_video(video_path=video_path, metadata=meta)
-                    
-                    candidate["status_fb"] = "published"
-                    updated_row = dict(candidate)
-                    sc.update_master_rows([updated_row])
-                    sc.record_post_timestamp(brand=b, platform="fb")
-                    console.print(f"     ✅ Đăng Facebook thành công: {res.get('post_id', 'OK')}")
+                if dry_run:
+                    console.print(f"     ✅ [DRY-RUN] Giả lập đăng thành công [{p.upper()}]!")
+                    candidate[f"status_{p}"] = "published"
                     brand_posted_count += 1
+                    continue
 
-                elif p == "yt":
-                    yt_creds = mgr.get_brand_credentials(b, "youtube")
-                    yt_conn = YouTubeConnector()
-                    from pathlib import Path
-                    yt_conn.token_path = Path(yt_creds.get("token_path"))
-                    if hasattr(yt_conn, 'authenticate') and callable(yt_conn.authenticate):
-                        yt_conn.authenticate()
-                    meta = PostMetadata(title=title, description=caption)
-                    res = yt_conn.upload_video(video_path=video_path, metadata=meta)
-                    
-                    candidate["status_yt"] = "published"
-                    updated_row = dict(candidate)
-                    sc.update_master_rows([updated_row])
-                    sc.record_post_timestamp(brand=b, platform="yt")
-                    console.print(f"     ✅ Đăng YouTube Shorts thành công: {res.get('video_url', 'OK')}")
-                    brand_posted_count += 1
-
-                elif p == "ig":
-                    ig_creds = mgr.get_brand_credentials(b, "instagram")
-                    ig_conn = InstagramConnector()
-                    ig_conn.access_token = ig_creds.get("access_token")
-                    ig_conn.instagram_account_id = ig_creds.get("instagram_account_id")
-                    meta = PostMetadata(title=title, description=caption)
-                    res = ig_conn.upload_video(video_path=video_path, metadata=meta)
-                    
-                    candidate["status_ig"] = "published"
-                    updated_row = dict(candidate)
-                    sc.update_master_rows([updated_row])
-                    sc.record_post_timestamp(brand=b, platform="ig")
-                    console.print(f"     ✅ Đăng Instagram Reels thành công: {res.get('video_url', 'OK')}")
-                    brand_posted_count += 1
-
-                elif p == "tt":
-                    tt_conn = TikTokBrowserConnector(brand_name=b)
-                    meta = PostMetadata(title=title, description=caption)
-                    res = tt_conn.upload_video(video_path=video_path, metadata=meta)
-                    if res.get("status") == "success":
-                        candidate["status_tt"] = "published"
+                # Live upload execution
+                try:
+                    if p == "fb":
+                        fb_creds = mgr.get_brand_credentials(b, "facebook")
+                        fb_conn = FacebookConnector()
+                        fb_conn.page_id = fb_creds.get("page_id")
+                        fb_conn.access_token = fb_creds.get("access_token")
+                        meta = PostMetadata(title=title, description=caption)
+                        res = fb_conn.upload_video(video_path=video_path, metadata=meta)
+                        
+                        candidate["status_fb"] = "published"
                         updated_row = dict(candidate)
                         sc.update_master_rows([updated_row])
-                        sc.record_post_timestamp(brand=b, platform="tt")
-                        console.print(f"     ✅ Đăng TikTok Studio thành công!")
+                        sc.record_post_timestamp(brand=b, platform="fb")
+                        console.print(f"     ✅ Đăng Facebook thành công: {res.get('post_id', 'OK')}")
                         brand_posted_count += 1
-                    else:
-                        console.print(f"     ❌ Đăng TikTok thất bại: {res}")
-                        try:
-                            from datetime import datetime
-                            err_ts = f"❌ Lỗi: {datetime.now().strftime('%H:%M %d/%m/%Y')}"
-                            candidate["status_tt"] = "failed"
-                            sc.update_master_rows([dict(candidate)])
-                            sc.record_post_timestamp(brand=b, platform="tt", timestamp_str=err_ts)
-                        except Exception:
-                            pass
-            except Exception as ex:
-                console.print(f"     ❌ Lỗi khi đăng [{p.upper()}]: {ex}")
-                try:
-                    from datetime import datetime
-                    err_ts = f"❌ Lỗi: {datetime.now().strftime('%H:%M %d/%m/%Y')}"
-                    candidate[f"status_{p}"] = "failed"
-                    sc.update_master_rows([dict(candidate)])
-                    sc.record_post_timestamp(brand=b, platform=p, timestamp_str=err_ts)
-                except Exception:
-                    pass
+
+                    elif p == "yt":
+                        yt_creds = mgr.get_brand_credentials(b, "youtube")
+                        yt_conn = YouTubeConnector()
+                        from pathlib import Path
+                        yt_conn.token_path = Path(yt_creds.get("token_path"))
+                        if hasattr(yt_conn, 'authenticate') and callable(yt_conn.authenticate):
+                            yt_conn.authenticate()
+                        meta = PostMetadata(title=title, description=caption)
+                        res = yt_conn.upload_video(video_path=video_path, metadata=meta)
+                        
+                        candidate["status_yt"] = "published"
+                        updated_row = dict(candidate)
+                        sc.update_master_rows([updated_row])
+                        sc.record_post_timestamp(brand=b, platform="yt")
+                        console.print(f"     ✅ Đăng YouTube Shorts thành công: {res.get('video_url', 'OK')}")
+                        brand_posted_count += 1
+
+                    elif p == "ig":
+                        ig_creds = mgr.get_brand_credentials(b, "instagram")
+                        ig_conn = InstagramConnector()
+                        ig_conn.access_token = ig_creds.get("access_token")
+                        ig_conn.instagram_account_id = ig_creds.get("instagram_account_id")
+                        meta = PostMetadata(title=title, description=caption)
+                        res = ig_conn.upload_video(video_path=video_path, metadata=meta)
+                        
+                        candidate["status_ig"] = "published"
+                        updated_row = dict(candidate)
+                        sc.update_master_rows([updated_row])
+                        sc.record_post_timestamp(brand=b, platform="ig")
+                        console.print(f"     ✅ Đăng Instagram Reels thành công: {res.get('video_url', 'OK')}")
+                        brand_posted_count += 1
+
+                    elif p == "tt":
+                        tt_conn = TikTokBrowserConnector(brand_name=b)
+                        meta = PostMetadata(title=title, description=caption)
+                        res = tt_conn.upload_video(video_path=video_path, metadata=meta)
+                        if res.get("status") == "success":
+                            candidate["status_tt"] = "published"
+                            updated_row = dict(candidate)
+                            sc.update_master_rows([updated_row])
+                            sc.record_post_timestamp(brand=b, platform="tt")
+                            console.print(f"     ✅ Đăng TikTok Studio thành công!")
+                            brand_posted_count += 1
+                        else:
+                            console.print(f"     ❌ Đăng TikTok thất bại: {res}")
+                            try:
+                                from datetime import datetime
+                                err_ts = f"❌ Lỗi: {datetime.now().strftime('%H:%M %d/%m/%Y')}"
+                                candidate["status_tt"] = "failed"
+                                sc.update_master_rows([dict(candidate)])
+                                sc.record_post_timestamp(brand=b, platform="tt", timestamp_str=err_ts)
+                            except Exception:
+                                pass
+                except Exception as ex:
+                    console.print(f"     ❌ Lỗi khi đăng [{p.upper()}]: {ex}")
+                    try:
+                        from datetime import datetime
+                        err_ts = f"❌ Lỗi: {datetime.now().strftime('%H:%M %d/%m/%Y')}"
+                        candidate[f"status_{p}"] = "failed"
+                        sc.update_master_rows([dict(candidate)])
+                        sc.record_post_timestamp(brand=b, platform=p, timestamp_str=err_ts)
+                    except Exception:
+                        pass
 
         if brand_posted_count > 0:
             total_posted += 1
@@ -1229,5 +1288,50 @@ def tiktok_daemon():
         console.print("[bold yellow]TikTok Scheduler đã dừng.[/bold yellow]")
 
 
+@app.command()
+def apply_market_intel(
+    file: str = typer.Option("config/market_intelligence.json", "--file", "-f", help="Đường dẫn tới file JSON Market Intelligence"),
+):
+    """Nạp dữ liệu tình báo thị trường & thời tiết (Market Intelligence) và tự động cập nhật hạn chót đăng bài (post_before) lên Tab Master."""
+    from core.market_intel import apply_market_intel as run_apply_intel
+    from core.sheet_client import GoogleSheetDirectClient
+    
+    console.print(f"\n[bold cyan]📡 ĐANG NẠP DỮ LIỆU TÌNH BÁO THỊ TRƯỜNG & THỜI TIẾT TỪ: '{file}'...[/bold cyan]")
+    
+    try:
+        sc = GoogleSheetDirectClient()
+        res = run_apply_intel(sheet_client=sc, file_path=file)
+        
+        updated_count = res.get("updated_count", 0)
+        report_date = res.get("report_date", "")
+        
+        if updated_count == 0:
+            console.print("[yellow]ℹ️ Không tìm thấy video nào trên Tab Master cần cập nhật hoặc các video đã có hạn chót gấp hơn.[/yellow]\n")
+            return
+
+        console.print(f"[bold green]🎉 Đã cập nhật thành công {updated_count} video trên Tab Master (Báo cáo ngày: {report_date})![/bold green]\n")
+        
+        table = Table(title="Danh Sách Video Được Cập Nhật Hạn Chót (post_before) Ưu Tiên")
+        table.add_column("Mã SP (job_id)", style="cyan", no_wrap=True)
+        table.add_column("Tên Video", style="magenta")
+        table.add_column("Hạn Chót Mới (post_before)", style="green", justify="center")
+        table.add_column("Lý Do Khớp / Ưu Tiên", style="yellow")
+        
+        for item in res.get("details", []):
+            table.add_row(
+                str(item.get("job_id", "")),
+                str(item.get("_title", ""))[:45] + "...",
+                str(item.get("post_before", "")),
+                str(item.get("_match_reason", "")),
+            )
+        
+        console.print(table)
+        console.print("\n[bold blue]💡 Mẹo: Chạy ngay lệnh 'python main.py auto-post-active' để hệ thống tự động gắp các video ưu tiên này xuất bản trước![/bold blue]\n")
+        
+    except Exception as e:
+        console.print(f"[bold red]❌ Lỗi khi nạp Market Intelligence: {e}[/bold red]\n")
+
+
 if __name__ == "__main__":
     app()
+

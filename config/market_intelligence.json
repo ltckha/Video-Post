@@ -1,0 +1,26 @@
+{
+  "report_date": "04/09/2026",
+  "weather_alerts": [
+    {
+      "region": "Miền Bắc & Miền Trung",
+      "condition": "Mưa to diện rộng kèm ngập úng đô thị do ảnh hưởng bão",
+      "boost_keywords": ["chống nước", "sấy giày", "áo mưa", "nano", "kháng nước"],
+      "recommended_post_before": "08/09/2026"
+    }
+  ],
+  "upcoming_events": [
+    {
+      "event_name": "Siêu Sale 9.9 Shopee",
+      "event_date": "09/09/2026",
+      "recommended_post_before": "08/09/2026",
+      "boost_keywords": ["9.9", "siêu sale", "sale khủng"]
+    },
+    {
+      "event_name": "Tết Trung Thu 2026",
+      "event_date": "25/09/2026",
+      "recommended_post_before": "15/09/2026",
+      "boost_keywords": ["lồng đèn", "bánh trung thu", "quà biếu", "trung thu"]
+    }
+  ],
+  "recommended_products": []
+}

@@ -20,11 +20,61 @@ SCOPES = [
 ]
 
 MASTER_HEADERS = [
-    "job_id", "title", "video_path", "shopee_link",
+    "job_id", "title", "video_path", "post_before", "content_type", "shopee_link",
     "caption_fb", "caption_yt", "caption_ig", "caption_tt", "caption_shopee", "caption_zalo",
     "brand_fb", "brand_yt", "brand_ig", "brand_tt",
     "status_fb", "status_yt", "status_ig", "status_tt", "status_shopee", "status_zalo"
 ]
+
+VALID_CONTENT_TYPES = [
+    "real_product",
+    "ai_product",
+    "real_accessory",
+    "ai_accessory",
+    "tips_tricks",
+]
+
+
+def detect_content_type(source_name: str, title: str = "", description: str = "", category: str = "") -> str:
+    """Classify video into 5 universal content pillars across all brands:
+    - real_product: Real camera video of main product (e.g. shoes, macadamia nuts, leather bags)
+    - ai_product: AI-rendered video of main product (e.g. from SANPHAM or Omni-Video)
+    - real_accessory: Real camera video of accessories/add-ons (e.g. belts, wallets, shell crackers)
+    - ai_accessory: AI-rendered video of accessories/add-ons
+    - tips_tricks: Tips, hacks, care guide, size guide, recipes, maintenance
+    """
+    full_text = f"{title} {description} {category}".lower()
+
+    # 1. Check for tips/tricks/guides
+    tips_keywords = [
+        "mẹo", "meo", "hướng dẫn", "huong dan", "cách ", "cach ",
+        "vệ sinh", "ve sinh", "bảo quản", "bao quan", "khử mùi", "khu mui",
+        "tips", "hacks", "chọn size", "chon size", "phân biệt", "phan biet",
+        "công dụng", "cong dung", "bí quyết", "bi quyet"
+    ]
+    if any(kw in full_text for kw in tips_keywords):
+        return "tips_tricks"
+
+    # 2. Determine AI vs Real production method
+    # SANPHAM (from HNC_Control_Center) has real products but videos are AI-rendered!
+    # Omni-Video is also AI-generated.
+    # Auto-Video-Factory or real camera folders are Real.
+    src_lower = str(source_name).lower()
+    is_ai = ("sanpham" in src_lower) or ("omni" in src_lower) or ("ai" in src_lower)
+
+    # 3. Check for accessory/secondary products
+    accessory_keywords = [
+        "ví", "vi da", "thắt lưng", "that lung", "dây nịt", "day nit",
+        "túi", "balo", "vớ", "tất", "xi ", "đón gót", "don got", "lót giày", "lot giay",
+        "kìm tách", "dụng cụ", "phụ kiện", "phu kien", "clutch", "wallet", "belt",
+        "móc khóa", "moc khoa", "dây đồng hồ", "card holder"
+    ]
+    if any(kw in full_text for kw in accessory_keywords):
+        return "ai_accessory" if is_ai else "real_accessory"
+
+    # 4. Main product
+    return "ai_product" if is_ai else "real_product"
+
 
 def normalize_header(s: Any) -> str:
     return "".join(c for c in str(s).lower() if c.isalnum())
@@ -204,6 +254,7 @@ class GoogleSheetDirectClient:
                 price_idx = find_idx(["product_price", "Giá", "Price", "Giá bán"])
                 color_idx = find_idx(["product_color", "Màu sắc", "Color"])
                 link_idx = find_idx(["shopee_link", "Link Shopee", "Affiliate Link", "Link"])
+                post_before_idx = find_idx(["post_before", "hạn chót", "deadline", "han_chot", "postbefore"])
 
                 for row in data_rows:
                     if not row or not any(row):
@@ -225,6 +276,7 @@ class GoogleSheetDirectClient:
                     price_val = row[price_idx].strip() if price_idx != -1 and price_idx < len(row) else ""
                     color_val = row[color_idx].strip() if color_idx != -1 and color_idx < len(row) else ""
                     link_val = row[link_idx].strip() if link_idx != -1 and link_idx < len(row) else ""
+                    post_before_val = row[post_before_idx].strip() if post_before_idx != -1 and post_before_idx < len(row) else ""
 
                     # Resolve video files in content_path
                     video_val = ""
@@ -257,6 +309,10 @@ class GoogleSheetDirectClient:
                     else:
                         initial_status = "not_configured"
 
+                    # Skip products that don't have video files yet
+                    if not video_val:
+                        continue
+
                     context_caption = f"{title_val}\n✔ Mã SP: {raw_id}"
                     if cat_val:
                         context_caption += f"\n✔ Ngành hàng: {cat_val}"
@@ -267,12 +323,15 @@ class GoogleSheetDirectClient:
                     if desc_val:
                         context_caption += f"\n\n{desc_val}"
 
+                    c_type = detect_content_type(source_name=tab_name, title=title_val, description=desc_val, category=cat_val)
                     input_data_map[raw_id] = {
                         "raw_id": raw_id,
                         "title_val": title_val,
                         "raw_cap_val": context_caption,
                         "video_val": video_val,
                         "link_val": link_val,
+                        "post_before_val": post_before_val,
+                        "content_type": c_type,
                         "b_fb": "Hiệu giày Hải Nancy",
                         "b_yt": "Hiệu giày Hải Nancy",
                         "b_ig": "Hiệu giày Hải Nancy",
@@ -288,6 +347,7 @@ class GoogleSheetDirectClient:
                 caption_idx = find_idx(["raw_caption", "Caption & Hashtags", "caption", "Mô tả bài đăng", "Chi tiết sản phẩm", "Hashtags", "Mô tả", "description"])
                 video_idx = find_idx(["video_path", "Output File", "Video File Path", "output_path", "video_url"])
                 link_idx = find_idx(["shopee_link", "Link ưu đãi", "Affiliate Link", "Link sản phẩm", "shopeeLink"])
+                post_before_idx = find_idx(["post_before", "hạn chót", "deadline", "han_chot", "postbefore"])
                 fb_brand_idx = find_idx(["brand_fb", "Fanpage Facebook", "Brand FB"])
                 yt_brand_idx = find_idx(["brand_yt", "Kênh YouTube", "Brand YT"])
                 ig_brand_idx = find_idx(["brand_ig", "Kênh Instagram", "Brand IG"])
@@ -304,18 +364,26 @@ class GoogleSheetDirectClient:
                     title_val = row[title_idx].strip() if title_idx != -1 and title_idx < len(row) else ""
                     raw_cap_val = row[caption_idx].strip() if caption_idx != -1 and caption_idx < len(row) else ""
                     video_val = row[video_idx].strip() if video_idx != -1 and video_idx < len(row) else ""
+                    # Skip items that don't have video path yet
+                    if not video_val:
+                        continue
+
                     link_val = row[link_idx].strip() if link_idx != -1 and link_idx < len(row) else ""
+                    post_before_val = row[post_before_idx].strip() if post_before_idx != -1 and post_before_idx < len(row) else ""
                     b_fb = row[fb_brand_idx].strip() if fb_brand_idx != -1 and fb_brand_idx < len(row) else ""
                     b_yt = row[yt_brand_idx].strip() if yt_brand_idx != -1 and yt_brand_idx < len(row) else ""
                     b_ig = row[ig_brand_idx].strip() if ig_brand_idx != -1 and ig_brand_idx < len(row) else ""
                     b_tt = row[tt_brand_idx].strip() if tt_brand_idx != -1 and tt_brand_idx < len(row) else ""
 
+                    c_type = detect_content_type(source_name=tab_name, title=title_val, description=raw_cap_val, category="")
                     input_data_map[raw_id] = {
                         "raw_id": raw_id,
                         "title_val": title_val,
                         "raw_cap_val": raw_cap_val,
                         "video_val": video_val,
                         "link_val": link_val,
+                        "post_before_val": post_before_val,
+                        "content_type": c_type,
                         "b_fb": b_fb,
                         "b_yt": b_yt,
                         "b_ig": b_ig,
@@ -341,6 +409,8 @@ class GoogleSheetDirectClient:
                 raw_cap_val = inp["raw_cap_val"]
                 video_val = inp["video_val"]
                 link_val = inp["link_val"]
+                post_before_val = inp.get("post_before_val", "")
+                c_type = inp.get("content_type", "")
                 b_fb = inp["b_fb"]
                 b_yt = inp["b_yt"]
                 b_ig = inp["b_ig"]
@@ -351,10 +421,15 @@ class GoogleSheetDirectClient:
                 raw_cap_val = prev.get("caption_fb", "")
                 video_val = prev.get("video_path", "")
                 link_val = prev.get("shopee_link", "")
+                post_before_val = prev.get("post_before", "")
+                c_type = prev.get("content_type", "")
                 b_fb = prev.get("brand_fb", "Default")
                 b_yt = prev.get("brand_yt", "Default")
                 b_ig = prev.get("brand_ig", "Default")
                 b_tt = prev.get("brand_tt", "Default")
+
+            if not c_type:
+                c_type = detect_content_type(source_name="", title=title_val, description=raw_cap_val)
 
             base_text = raw_cap_val or title_val
             is_existing = raw_id in existing_master
@@ -403,10 +478,16 @@ class GoogleSheetDirectClient:
 
             clean_video_path = video_val or prev.get("video_path", "")
 
+            # Exclude items that do NOT have a video path yet
+            if not str(clean_video_path).strip():
+                continue
+
             master_row = {
                 "job_id": raw_id,
                 "title": title_val or prev.get("title", ""),
                 "video_path": clean_video_path,
+                "post_before": post_before_val or prev.get("post_before", ""),
+                "content_type": c_type or "real_product",
                 "shopee_link": link_val or prev.get("shopee_link", ""),
                 "caption_fb": cap_fb,
                 "caption_yt": cap_yt,
@@ -525,11 +606,13 @@ class GoogleSheetDirectClient:
         if not target_row:
             return False
 
-        plat_key = f"times_{platform.lower().strip()}"
+        plat_lower = platform.lower().strip()
+        short_p = "fb" if plat_lower in ["facebook", "fb"] else ("yt" if plat_lower in ["youtube", "yt"] else ("ig" if plat_lower in ["instagram", "ig"] else ("tt" if plat_lower in ["tiktok", "tt"] else plat_lower)))
+        plat_key = f"times_{short_p}"
         col_idx = header_map.get(normalize_header(plat_key))
         if not col_idx:
             # Fallback alias search
-            col_idx = header_map.get(normalize_header(platform))
+            col_idx = header_map.get(normalize_header(f"times_{plat_lower}")) or header_map.get(normalize_header(plat_lower)) or header_map.get(normalize_header(short_p))
 
         if not col_idx:
             return False

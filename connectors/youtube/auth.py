@@ -95,7 +95,11 @@ class YouTubeConnector(BasePlatformConnector):
         flow = InstalledAppFlow.from_client_secrets_file(
             client_secrets_file, YOUTUBE_SCOPES
         )
-        self.credentials = flow.run_local_server(port=8080)
+        self.credentials = flow.run_local_server(
+            port=0,
+            access_type="offline",
+            prompt="consent",
+        )
         self.save_credentials()
         return True
 

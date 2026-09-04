@@ -140,6 +140,12 @@ class AccountManager:
         if key in dictionary:
             return dictionary[key]
         clean_key = key.strip().lower()
+        aliases = {
+            "maccadamia hải nancy": "macadamia hải nancy",
+            "yen handemade leather": "yen handmade leather",
+            "ở đà lạt vậy thôi": "ờ đà lạt vậy thôi",
+        }
+        clean_key = aliases.get(clean_key, clean_key)
         for k, v in dictionary.items():
             if str(k).strip().lower() == clean_key:
                 return v
