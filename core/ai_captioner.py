@@ -104,13 +104,20 @@ class AICaptionGenerator:
                     if self.rpm_delay > 0:
                         time.sleep(self.rpm_delay)
 
-                    # Also detect event deadline (post_before)
-                    from core.event_detector import detect_event_deadline
-                    detected = detect_event_deadline(title=title, description=raw_caption)
-                    if detected:
-                        event_name, deadline_str = detected
-                        captions["post_before"] = deadline_str
-                        captions["detected_event"] = event_name
+                    # Prioritize Gemini's deep reasoning for post_before, fallback to calendar detector
+                    pb_gemini = str(captions.get("post_before", "")).strip()
+                    ev_gemini = str(captions.get("detected_event", "")).strip()
+
+                    if pb_gemini:
+                        captions["post_before"] = pb_gemini
+                        captions["detected_event"] = ev_gemini
+                    else:
+                        from core.event_detector import detect_event_deadline
+                        detected = detect_event_deadline(title=title, description=raw_caption)
+                        if detected:
+                            event_name, deadline_str = detected
+                            captions["post_before"] = deadline_str
+                            captions["detected_event"] = event_name
 
                     return captions
             except Exception as e:
@@ -125,6 +132,7 @@ class AICaptionGenerator:
             fallback_captions["post_before"] = deadline_str
             fallback_captions["detected_event"] = event_name
         return fallback_captions
+
 
     def generate_tiktok_caption(
         self,
@@ -251,6 +259,7 @@ Hashtag ngành hàng Shopee: {cat_tag}
 YÊU CẦU ĐẶC BIỆT LẦN NÀY: Khách hàng chưa hài lòng với bản nháp cũ. {style_prompt}
 """
 
+        today_str = datetime.now().strftime("%d/%m/%Y")
         prompt += f"""
 QUY TẮC BẮT BUỘC:
 1. KHÔNG thêm bất kỳ câu Kêu Gọi Mua Hàng / CTA nào (NHƯ: "Mua ngay tại...", "Bấm vào link...", "Sắm ngay...", "Link bio..."). Trong video đã có CTA rồi.
@@ -278,11 +287,25 @@ QUY TẮC BẮT BUỘC:
      #phuchoigiay #giayda #brogue #customgiay #leathercare
      --- HẾT BÀI MẪU ---
 
-   - "shopee": TỔNG ĐỘ DÀI TOÀN BỘ BÀI VIẾT KỂ CẢ HASHTAG PHẢI DƯỚI 150 KÝ TỰ (< 150 chars total). Bắt buộc chứa 4 tags này ở cuối: #shopeevideo #luotvuimualien #shopeecreator {cat_tag}.
-   - "zalo": Bài viết Zalo bán hàng + 3-5 hashtags (giống Facebook).
+    - "shopee": TỔNG ĐỘ DÀI TOÀN BỘ BÀI VIẾT KỂ CẢ HASHTAG PHẢI DƯỚI 150 KÝ TỰ (< 150 chars total). Bắt buộc chứa 4 tags này ở cuối: #shopeevideo #luotvuimualien #shopeecreator {cat_tag}.
+    - "zalo": Bài viết Zalo bán hàng + 3-5 hashtags (giống Facebook).
+
+4. PHÂN TÍCH HẠN CHÓT MÙA VỤ & SỰ KIỆN (post_before):
+   - Mốc thời gian thực tế: HÔM NAY LÀ NGÀY {today_str}.
+   - QUY TẮC CỬA SỔ THỜI GIAN (TIME HORIZON):
+     + CHỈ được gán hạn chót "post_before" nếu sự kiện hoặc chiến dịch diễn ra TRONG VÒNG 30 ĐẾN TỐI ĐA 60 NGÀY TỚI kể từ hôm nay ({today_str})!
+     + TUYỆT ĐỐI KHÔNG gán sự kiện cách xa trên 60 ngày (Ví dụ: Đang tháng 9 mà gán tận Tết Nguyên Đán năm sau là SAI, vì sẽ làm video bị xếp vào độ ưu tiên thấp nhất và bị giam không được đăng trong suốt các tháng tới).
+     + Ngoại lệ duy nhất được gán xa là các sản phẩm độc quyền chỉ dùng được đúng duy nhất cho ngày đó (như Bánh chưng Tết, Phong bao lì xì, Cây thông Noel).
+   - QUY TẮC SẢN PHẨM QUANH NĂM / ĐA DỤNG:
+     + Các sản phẩm bán quanh năm (như túi du lịch, giày dép, ví da, phụ kiện thông thường, đồ gia dụng...):
+       * Nếu sản phẩm có công năng đón đầu thời tiết hiện tại (như chống thấm nước, bọc đi mưa, sấy giày trong mùa mưa bão hiện tại): Có thể gán hạn chót ngắn hạn trong tháng (từ 7 - 14 ngày tới).
+       * Nếu là sản phẩm quanh năm bình thường: BẮT BUỘC ĐỂ TRỐNG "post_before": "" và "detected_event": "" để hệ thống tự động phân bổ đều đặn!
+   - Nếu đủ điều kiện gán: Tính "post_before" theo định dạng "DD/MM/YYYY" trước sự kiện 7 - 15 ngày để kịp giao hàng, và điền lý do vào "detected_event".
 
 TRẢ VỀ CHỈ DUY NHẤT 1 OBJECT JSON HỢP LỆ (KHÔNG THÊM CÂU TỪ NÀO KHÁC):
 {{
+  "post_before": "DD/MM/YYYY hoặc để trống nếu bán quanh năm",
+  "detected_event": "Tên sự kiện/ngữ cảnh phát hiện hoặc để trống",
   "facebook": "...",
   "youtube": "...",
   "instagram": "...",
@@ -317,9 +340,32 @@ TRẢ VỀ CHỈ DUY NHẤT 1 OBJECT JSON HỢP LỆ (KHÔNG THÊM CÂU TỪ NÀ
                             if "shopee" in result and len(result["shopee"]) > 150:
                                 shopee_tags = f"#shopeevideo #luotvuimualien #shopeecreator {cat_tag}"
                                 result["shopee"] = f"{title[:80]} {shopee_tags}"[:150]
-                            return {k: self.clean_cta(v) for k, v in result.items()}
+                            cleaned = {}
+                            for k, v in result.items():
+                                if k in ["post_before", "detected_event"]:
+                                    cleaned[k] = str(v).strip()
+                                else:
+                                    cleaned[k] = self.clean_cta(str(v))
+
+                            # Safety check: Do not allow general products to be scheduled > 60 days in future
+                            pb_val = cleaned.get("post_before", "")
+                            if pb_val:
+                                from core.market_intel import parse_date_safely
+                                dt = parse_date_safely(pb_val)
+                                if dt:
+                                    delta_days = (dt - datetime.now()).days
+                                    exclusive_keywords = ["bánh chưng", "lì xì", "cây thông noel", "ông già noel", "lồng đèn", "bánh trung thu"]
+                                    is_exclusive = any(kw in title.lower() for kw in exclusive_keywords)
+                                    if delta_days > 60 and not is_exclusive:
+                                        logger.info(f"Clearing post_before '{pb_val}' for '{title}' because deadline is too far in future ({delta_days} days) for a general product.")
+                                        cleaned["post_before"] = ""
+                                        cleaned["detected_event"] = ""
+
+                            return cleaned
                 else:
                     logger.warning(f"Gemini API model '{model}' trả về status HTTP {res.status_code}: {res.text}. Thử model kế tiếp...")
+
+
             except Exception as e:
                 logger.warning(f"Gemini API model '{model}' gặp ngoại lệ: {e}. Thử model kế tiếp...")
 
