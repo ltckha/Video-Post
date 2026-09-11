@@ -51,28 +51,32 @@ class MasterSheetExporter:
         self.db_path = db_path
         self.output_csv = output_csv
 
-    def _sync_two_way_statuses(self, ignore_job_ids: List[int] = None):
-        """Fetch Master Sheet online and sync manual statuses back to local DB."""
-        master_url = getattr(settings, "MASTER_SHEET_URL", None)
-        if not master_url:
+    def _sync_two_way_statuses(self, ignore_job_ids=None, csv_text=None):
+        """Đồng bộ ngược trạng thái từ Tab Master về SQLite (hoặc từ chuỗi csv_text được truyền vào)."""
+        master_url = getattr(settings, "MASTER_SHEET_URL", "")
+        if not master_url and not csv_text:
             return
-            
-        export_url = master_url
-        if "/edit" in export_url:
-            base = export_url.split("/edit")[0]
-            export_url = f"{base}/gviz/tq?tqx=out:csv&sheet=Master"
-        elif not export_url.endswith("/export?format=csv"):
-            export_url = export_url.rstrip("/") + "/gviz/tq?tqx=out:csv&sheet=Master"
-            
+
         try:
             import requests
             import io
-            res = requests.get(export_url, timeout=15)
-            if res.status_code != 200:
-                return
-                
-            res.encoding = "utf-8"
-            f = io.StringIO(res.text)
+            if csv_text is not None:
+                f = io.StringIO(csv_text)
+            else:
+                export_url = master_url
+                if "/edit" in export_url:
+                    base = export_url.split("/edit")[0]
+                    export_url = f"{base}/gviz/tq?tqx=out:csv&sheet=Master"
+                elif not export_url.endswith("/export?format=csv"):
+                    export_url = export_url.rstrip("/") + "/gviz/tq?tqx=out:csv&sheet=Master"
+
+                res = requests.get(export_url, timeout=15)
+                if res.status_code != 200:
+                    return
+
+                res.encoding = "utf-8"
+                f = io.StringIO(res.text)
+
             reader = csv.DictReader(f)
             
             with sqlite3.connect(self.db_path) as conn:
@@ -117,8 +121,22 @@ class MasterSheetExporter:
                                 
                     # Quét các cột Đăng tự động và đồng bộ ngược (cho phép user sửa bằng tay)
                     for col, plat_key in [("status_fb", "facebook"), ("status_yt", "youtube"), ("status_ig", "instagram")]:
-                        val = str(row.get(col, "")).strip().lower()
-                        if val in valid_statuses:
+                        raw_cell_val = str(row.get(col, "")).strip()
+                        val = raw_cell_val.lower()
+
+                        # Xử lý đặc biệt cho YouTube: chứa link video hoặc điểm số thẩm định (VD: 8.5/10)
+                        if plat_key == "youtube" and (raw_cell_val.startswith("http") or "/10" in raw_cell_val):
+                            plat_data = results_data.get("youtube", {})
+                            if not isinstance(plat_data, dict):
+                                plat_data = {}
+                            if plat_data.get("status") != "published":
+                                plat_data["status"] = "published"
+                                changed = True
+                            if raw_cell_val.startswith("http") and plat_data.get("video_url") != raw_cell_val:
+                                plat_data["video_url"] = raw_cell_val
+                                changed = True
+                            results_data["youtube"] = plat_data
+                        elif val in valid_statuses:
                             plat_data = results_data.get(plat_key, {})
                             if isinstance(plat_data, dict):
                                 if plat_data.get("status") != val:
@@ -243,7 +261,13 @@ class MasterSheetExporter:
                 return "not_configured"
 
             fb_status = get_auto_status("facebook")
-            yt_status = get_auto_status("youtube")
+
+            yt_data = results_data.get("youtube", {})
+            if isinstance(yt_data, dict) and yt_data.get("video_url") and yt_data.get("status") in ["published", "success", "completed"]:
+                yt_status = yt_data["video_url"]
+            else:
+                yt_status = get_auto_status("youtube")
+
             ig_status = get_auto_status("instagram")
             
             # Hàm phụ trợ trạng thái nền tảng thủ công (được đồng bộ 2 chiều)

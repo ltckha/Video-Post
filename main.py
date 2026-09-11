@@ -1211,11 +1211,12 @@ def auto_post_active(
                         meta = PostMetadata(title=title, description=caption)
                         res = yt_conn.upload_video(video_path=video_path, metadata=meta)
                         
-                        candidate["status_yt"] = "published"
+                        yt_video_url = res.get("video_url") or (f"https://www.youtube.com/watch?v={res.get('video_id')}" if res.get("video_id") else "published")
+                        candidate["status_yt"] = yt_video_url
                         updated_row = dict(candidate)
                         sc.update_master_rows([updated_row])
                         sc.record_post_timestamp(brand=b, platform="yt")
-                        console.print(f"     ✅ Đăng YouTube Shorts thành công: {res.get('video_url', 'OK')}")
+                        console.print(f"     ✅ Đăng YouTube Shorts thành công: {yt_video_url}")
                         brand_posted_count += 1
 
                     elif p == "ig":

@@ -33,6 +33,19 @@ def test_ai_caption_generator_rules():
     assert "#shorts" in captions["youtube"]
 
 
+def test_ai_caption_generator_detects_post_before():
+    gen = AICaptionGenerator()
+    title = "Lồng đèn thỏ ngọc phát sáng Trung Thu cho bé"
+    raw_desc = "Đồ chơi rước đèn trung thu dễ thương"
+
+    captions = gen.generate_all_captions(title=title, raw_caption=raw_desc)
+    assert "post_before" in captions
+    assert captions["post_before"] == "25/09/2026"
+    assert "detected_event" in captions
+    assert "Trung Thu" in captions["detected_event"]
+
+
+
 def test_master_sheet_exporter_english_columns(tmp_path):
     db_file = tmp_path / "test_exporter.db"
     csv_file = tmp_path / "master_output_sheet.csv"
