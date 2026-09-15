@@ -407,6 +407,9 @@ class GoogleSheetDirectClient:
         # Initialize Google Drive Uploader for automatic video backup
         try:
             drive_uploader = GoogleDriveUploader()
+            from core.drive_uploader import DRIVE_FOLDER_OMNI, DRIVE_FOLDER_HNC
+            drive_uploader.load_folder_cache(DRIVE_FOLDER_OMNI)
+            drive_uploader.load_folder_cache(DRIVE_FOLDER_HNC)
         except Exception as e:
             logger.warning(f"Could not initialize GoogleDriveUploader: {e}")
             drive_uploader = None
@@ -496,6 +499,10 @@ class GoogleSheetDirectClient:
 
             # Check Google Drive video backup upload (Omni-Video & SANPHAM)
             drive_url_val = prev.get("drive_url", "")
+            # Ensure drive_url_val is strictly a cloud Google Drive link (strip any local paths)
+            if drive_url_val and not str(drive_url_val).strip().startswith("https://drive.google.com/"):
+                drive_url_val = ""
+
             if not source_tab:
                 clean_vp_lower = clean_video_path.lower()
                 raw_id_lower = raw_id.lower()
@@ -504,7 +511,16 @@ class GoogleSheetDirectClient:
                 elif "sanpham" in clean_vp_lower or "hnc" in clean_vp_lower or "hải nancy" in str(b_fb).lower():
                     source_tab = "SANPHAM"
 
-            if drive_uploader and GoogleDriveUploader.should_upload_video(
+            folder_id = GoogleDriveUploader.get_folder_id_for_source(source_tab) if source_tab else None
+
+            # 1. Check if we can find genuine URL from Drive cache first
+            if not drive_url_val and folder_id and drive_uploader:
+                cached = drive_uploader.get_cached_drive_url(folder_id, clean_video_path, job_id=raw_id)
+                if cached:
+                    drive_url_val = cached
+
+            # 2. Upload / copy if still empty and eligible
+            if not drive_url_val and drive_uploader and GoogleDriveUploader.should_upload_video(
                 source_name=source_tab,
                 local_path=clean_video_path,
                 existing_drive_url=drive_url_val,
@@ -512,12 +528,10 @@ class GoogleSheetDirectClient:
                 status_yt=st_yt,
                 status_ig=st_ig,
             ):
-                folder_id = GoogleDriveUploader.get_folder_id_for_source(source_tab)
                 if folder_id:
-                    logger.info(f"Auto-uploading video to Google Drive for {raw_id} ({source_tab})...")
                     try:
-                        uploaded_url = drive_uploader.upload_file(clean_video_path, folder_id, source_name=source_tab)
-                        if uploaded_url:
+                        uploaded_url = drive_uploader.upload_file(clean_video_path, folder_id, source_name=source_tab, job_id=raw_id)
+                        if uploaded_url and str(uploaded_url).startswith("https://drive.google.com/"):
                             drive_url_val = uploaded_url
                     except Exception as e:
                         logger.warning(f"Failed to upload video for {raw_id} to Google Drive: {e}")

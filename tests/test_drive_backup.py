@@ -85,7 +85,8 @@ def test_upload_file_new_and_existing(tmp_path):
     dummy_video = tmp_path / "demo.mp4"
     dummy_video.write_text("content")
 
-    with patch.object(GoogleDriveUploader, "_init_service", return_value=None):
+    with patch.object(GoogleDriveUploader, "_init_service", return_value=None), \
+         patch.object(GoogleDriveUploader, "get_local_drive_folder", return_value=None):
         uploader = GoogleDriveUploader()
         uploader.service = MagicMock()
 
@@ -97,14 +98,16 @@ def test_upload_file_new_and_existing(tmp_path):
         assert res_url == "https://drive.google.com/file/d/existing_id_123/view"
 
         # Case 2: File does not exist yet -> Uploads new file
-        uploader.service.files().list().execute.return_value = {"files": []}
-        uploader.service.files().create().execute.return_value = {
+        uploader2 = GoogleDriveUploader()
+        uploader2.service = MagicMock()
+        uploader2.service.files().list().execute.return_value = {"files": []}
+        uploader2.service.files().create().execute.return_value = {
             "id": "new_id_456",
             "name": "demo.mp4",
             "webViewLink": "https://drive.google.com/file/d/new_id_456/view",
         }
         with patch("core.drive_uploader.MediaFileUpload"):
-            res_url2 = uploader.upload_file(str(dummy_video), DRIVE_FOLDER_OMNI)
+            res_url2 = uploader2.upload_file(str(dummy_video), DRIVE_FOLDER_OMNI)
             assert res_url2 == "https://drive.google.com/file/d/new_id_456/view"
 
 
@@ -127,6 +130,7 @@ def test_sync_input_tabs_integrates_drive_backup(tmp_path):
 
         mock_uploader_instance = MagicMock()
         mock_uploader_instance.upload_file.return_value = "https://drive.google.com/file/d/mock_drive_id/view"
+        mock_uploader_instance.get_cached_drive_url.return_value = "https://drive.google.com/file/d/mock_drive_id/view"
         mock_uploader_cls.return_value = mock_uploader_instance
         mock_uploader_cls.should_upload_video.return_value = True
         mock_uploader_cls.get_folder_id_for_source.return_value = DRIVE_FOLDER_HNC
