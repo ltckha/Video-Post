@@ -516,7 +516,7 @@ class GoogleSheetDirectClient:
                 if folder_id:
                     logger.info(f"Auto-uploading video to Google Drive for {raw_id} ({source_tab})...")
                     try:
-                        uploaded_url = drive_uploader.upload_file(clean_video_path, folder_id)
+                        uploaded_url = drive_uploader.upload_file(clean_video_path, folder_id, source_name=source_tab)
                         if uploaded_url:
                             drive_url_val = uploaded_url
                     except Exception as e:
