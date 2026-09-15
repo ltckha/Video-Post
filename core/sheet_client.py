@@ -11,6 +11,7 @@ from typing import List, Dict, Any, Optional
 import gspread
 from google.oauth2.service_account import Credentials
 from config import settings
+from core.drive_uploader import GoogleDriveUploader
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ SCOPES = [
 ]
 
 MASTER_HEADERS = [
-    "job_id", "title", "video_path", "post_before", "content_type", "shopee_link",
+    "job_id", "title", "video_path", "drive_url", "post_before", "content_type", "shopee_link",
     "caption_fb", "caption_yt", "caption_ig", "caption_tt", "caption_shopee", "caption_zalo",
     "brand_fb", "brand_yt", "brand_ig", "brand_tt",
     "status_fb", "status_yt", "status_ig", "status_tt", "status_shopee", "status_zalo"
@@ -326,6 +327,7 @@ class GoogleSheetDirectClient:
                     c_type = detect_content_type(source_name=tab_name, title=title_val, description=desc_val, category=cat_val)
                     input_data_map[raw_id] = {
                         "raw_id": raw_id,
+                        "source_tab": tab_name,
                         "title_val": title_val,
                         "raw_cap_val": context_caption,
                         "video_val": video_val,
@@ -378,6 +380,7 @@ class GoogleSheetDirectClient:
                     c_type = detect_content_type(source_name=tab_name, title=title_val, description=raw_cap_val, category="")
                     input_data_map[raw_id] = {
                         "raw_id": raw_id,
+                        "source_tab": tab_name,
                         "title_val": title_val,
                         "raw_cap_val": raw_cap_val,
                         "video_val": video_val,
@@ -401,10 +404,18 @@ class GoogleSheetDirectClient:
             if j_id not in all_ordered_ids:
                 all_ordered_ids.append(j_id)
 
+        # Initialize Google Drive Uploader for automatic video backup
+        try:
+            drive_uploader = GoogleDriveUploader()
+        except Exception as e:
+            logger.warning(f"Could not initialize GoogleDriveUploader: {e}")
+            drive_uploader = None
+
         all_input_rows = []
         for raw_id in all_ordered_ids:
             if raw_id in input_data_map:
                 inp = input_data_map[raw_id]
+                source_tab = inp.get("source_tab", "")
                 title_val = inp["title_val"]
                 raw_cap_val = inp["raw_cap_val"]
                 video_val = inp["video_val"]
@@ -417,6 +428,7 @@ class GoogleSheetDirectClient:
                 b_tt = inp["b_tt"]
             else:
                 prev = existing_master.get(raw_id, {})
+                source_tab = ""
                 title_val = prev.get("title", "")
                 raw_cap_val = prev.get("caption_fb", "")
                 video_val = prev.get("video_path", "")
@@ -482,10 +494,39 @@ class GoogleSheetDirectClient:
             if not str(clean_video_path).strip():
                 continue
 
+            # Check Google Drive video backup upload (Omni-Video & SANPHAM)
+            drive_url_val = prev.get("drive_url", "")
+            if not source_tab:
+                clean_vp_lower = clean_video_path.lower()
+                raw_id_lower = raw_id.lower()
+                if "omni" in clean_vp_lower or "omni" in raw_id_lower:
+                    source_tab = "Omni-Video"
+                elif "sanpham" in clean_vp_lower or "hnc" in clean_vp_lower or "hải nancy" in str(b_fb).lower():
+                    source_tab = "SANPHAM"
+
+            if drive_uploader and GoogleDriveUploader.should_upload_video(
+                source_name=source_tab,
+                local_path=clean_video_path,
+                existing_drive_url=drive_url_val,
+                status_fb=st_fb,
+                status_yt=st_yt,
+                status_ig=st_ig,
+            ):
+                folder_id = GoogleDriveUploader.get_folder_id_for_source(source_tab)
+                if folder_id:
+                    logger.info(f"Auto-uploading video to Google Drive for {raw_id} ({source_tab})...")
+                    try:
+                        uploaded_url = drive_uploader.upload_file(clean_video_path, folder_id)
+                        if uploaded_url:
+                            drive_url_val = uploaded_url
+                    except Exception as e:
+                        logger.warning(f"Failed to upload video for {raw_id} to Google Drive: {e}")
+
             master_row = {
                 "job_id": raw_id,
                 "title": title_val or prev.get("title", ""),
                 "video_path": clean_video_path,
+                "drive_url": drive_url_val,
                 "post_before": post_before_val or prev.get("post_before", ""),
                 "content_type": c_type or "real_product",
                 "shopee_link": link_val or prev.get("shopee_link", ""),

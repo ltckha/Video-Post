@@ -1149,7 +1149,8 @@ def auto_post_active(
                     continue
 
                 v_path = (r.get("video_path") or "").strip()
-                if not v_path or not Path(v_path).exists():
+                is_cloud_video = v_path.startswith("http://") or v_path.startswith("https://")
+                if not v_path or (not is_cloud_video and not Path(v_path).exists()):
                     continue
 
                 brand_candidates.append(r)

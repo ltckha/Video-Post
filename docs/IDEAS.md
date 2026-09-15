@@ -55,3 +55,8 @@ Tài liệu này lưu trữ các ý tưởng cải tiến hệ thống **Video-P
      - Lưu trữ kết quả phân tích vào Tab `Market_Radar` trên Google Sheet hoặc file tri thức `config/market_intelligence.json`.
      - Tự động gán/điều chỉnh ngày `post_before` ngắn hạn (3 - 5 ngày) cho các video phù hợp trong Tab `Master` để bộ lập lịch `queue_scheduler.py` gắp lên đăng ưu tiên ngay lập tức.
 
+---
+
+## 6. ☁️ [ĐÃ HOÀN THÀNH ✅] Nguồn Video Cloud-First (Google Drive) & Tự Động Sao Lưu
+- **Mục tiêu**: Tự động sao lưu video từ máy Mac lên Google Drive (`Spark/Omni-Video/Outputs/` và `Spark/HNC_Master/Outputs/`) và hỗ trợ nhận diện Dual Video Source (cả file cục bộ và link Cloud `drive_url` ở Cột D Tab `Master`).
+- **Module triển khai**: [`core/drive_uploader.py`](file:///Users/khan/Developer/Video-Post/core/drive_uploader.py), [`core/sheet_client.py`](file:///Users/khan/Developer/Video-Post/core/sheet_client.py), [`core/sheet_exporter.py`](file:///Users/khan/Developer/Video-Post/core/sheet_exporter.py).
