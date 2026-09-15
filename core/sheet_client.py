@@ -506,14 +506,23 @@ class GoogleSheetDirectClient:
             if not source_tab:
                 clean_vp_lower = clean_video_path.lower()
                 raw_id_lower = raw_id.lower()
-                if "omni" in clean_vp_lower or "omni" in raw_id_lower:
+                if "auto" in clean_vp_lower or "auto-video-factory" in clean_vp_lower:
+                    source_tab = "Auto-Video-Factory"
+                elif "omni" in clean_vp_lower or "omni" in raw_id_lower:
                     source_tab = "Omni-Video"
-                elif "sanpham" in clean_vp_lower or "hnc" in clean_vp_lower or "hải nancy" in str(b_fb).lower():
+                elif "sanpham" in clean_vp_lower or "hnc" in clean_vp_lower:
+                    source_tab = "SANPHAM"
+                elif "hải nancy" in str(b_fb).lower() and not ("auto" in clean_vp_lower):
                     source_tab = "SANPHAM"
 
-            folder_id = GoogleDriveUploader.get_folder_id_for_source(source_tab) if source_tab else None
+            # Strictly ensure Auto-Video-Factory NEVER has drive_url
+            if source_tab == "Auto-Video-Factory" or "auto" in clean_video_path.lower():
+                drive_url_val = ""
+                folder_id = None
+            else:
+                folder_id = GoogleDriveUploader.get_folder_id_for_source(source_tab) if source_tab else None
 
-            # 1. Check if we can find genuine URL from Drive cache first
+            # 1. Check if we can find genuine URL from Drive cache first (Omni & SANPHAM only)
             if not drive_url_val and folder_id and drive_uploader:
                 cached = drive_uploader.get_cached_drive_url(folder_id, clean_video_path, job_id=raw_id)
                 if cached:
