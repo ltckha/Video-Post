@@ -1,0 +1,564 @@
+{
+  "name": "Video-Post Cloud Auto Publish (Multi-Platform)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 11,19 * * *"
+            }
+          ]
+        }
+      },
+      "id": "node-trigger-cron",
+      "name": "⏰ Lịch Đăng Giờ Vàng (11:30 & 19:30)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "publish-video",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "node-trigger-webhook",
+      "name": "⚡ Webhook Đăng Tức Thì",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        100,
+        500
+      ],
+      "webhookId": "video-post-instant-publish"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1Xg67qhp1J_Izt7v5uDKRgKjdEZapX9giKJ_ym0OMJN4",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Master",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "node-read-sheet",
+      "name": "📥 Đọc Tab Master (Google Sheet)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        360,
+        400
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google_sheets_account",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * n8n Code Node: Candidate Filter & Priority Scheduler\n * \n * Filters rows from Google Sheet Tab 'Master':\n * 1. Must have a valid Google Drive URL (https://drive.google.com/...)\n * 2. Must have at least 1 platform in 'pending' status (YouTube, Facebook, or Instagram)\n * 3. Sorts by post_before deadline (Urgent <= 3 days first) and content_type interleaving\n */\n\nfunction extractDriveFileId(url) {\n  if (!url) return null;\n  const match = url.match(/\\/file\\/d\\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);\n  return match ? match[1] : null;\n}\n\nfunction parseDeadlineDays(dateStr) {\n  if (!dateStr || typeof dateStr !== 'string') return 999;\n  const parts = dateStr.trim().split('/');\n  if (parts.length === 3) {\n    const day = parseInt(parts[0], 10);\n    const month = parseInt(parts[1], 10) - 1;\n    const year = parseInt(parts[2], 10);\n    const targetDate = new Date(year, month, day);\n    const today = new Date();\n    today.setHours(0, 0, 0, 0);\n    const diffTime = targetDate - today;\n    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));\n  }\n  return 999;\n}\n\nconst items = $input.all();\nconst candidates = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const row = items[i].json;\n  const rowNumber = i + 2; // Row index on Google Sheet (1-indexed, header is row 1)\n  \n  const driveUrl = (row.drive_url || '').trim();\n  const fileId = extractDriveFileId(driveUrl);\n  \n  // Rule 1: Must have valid cloud Google Drive video\n  if (!fileId) continue;\n  \n  const statusYt = (row.status_yt || '').trim().toLowerCase();\n  const statusFb = (row.status_fb || '').trim().toLowerCase();\n  const statusIg = (row.status_ig || '').trim().toLowerCase();\n  \n  const isYtPending = statusYt === 'pending';\n  const isFbPending = statusFb === 'pending';\n  const isIgPending = statusIg === 'pending';\n  \n  // Rule 2: At least 1 automated platform must be pending\n  if (!isYtPending && !isFbPending && !isIgPending) continue;\n  \n  const daysLeft = parseDeadlineDays(row.post_before);\n  \n  // Prepare platform metadata\n  const rawTitle = (row.title || 'Video Sản Phẩm').replace(/[<>]/g, '').trim();\n  let ytTitle = rawTitle;\n  if (ytTitle.length > 95) ytTitle = ytTitle.substring(0, 92).trim() + '...';\n  \n  let ytDesc = (row.caption_yt || rawTitle).trim();\n  if (!ytDesc.toLowerCase().includes('#shorts')) {\n    ytDesc = `${ytDesc}\\n\\n#Shorts`.trim();\n  }\n  \n  const fbCaption = (row.caption_fb || rawTitle).trim();\n  const igCaption = (row.caption_ig || rawTitle).trim();\n  \n  candidates.push({\n    json: {\n      row_number: rowNumber,\n      job_id: row.job_id,\n      title: rawTitle,\n      video_path: row.video_path,\n      drive_url: driveUrl,\n      drive_file_id: fileId,\n      content_type: row.content_type || 'real_product',\n      post_before: row.post_before || '',\n      days_left: daysLeft,\n      shopee_link: row.shopee_link || '',\n      \n      // Target flags\n      post_yt: isYtPending,\n      post_fb: isFbPending,\n      post_ig: isIgPending,\n      \n      // Formatted platform metadata\n      brand_yt: row.brand_yt || 'Default',\n      brand_fb: row.brand_fb || 'Default',\n      brand_ig: row.brand_ig || 'Default',\n      yt_title: ytTitle,\n      yt_caption: ytDesc,\n      fb_caption: fbCaption,\n      ig_caption: igCaption,\n    }\n  });\n}\n\n// Sort candidates: Urgent events (days_left <= 3) first, then by days_left ascending\ncandidates.sort((a, b) => {\n  const dA = a.json.days_left;\n  const dB = b.json.days_left;\n  if (dA <= 3 && dB > 3) return -1;\n  if (dB <= 3 && dA > 3) return 1;\n  return dA - dB;\n});\n\n// Take top candidates for this batch run (e.g. top 1-3 videos per scheduled execution)\nconst limit = 1;\nreturn candidates.slice(0, limit);\n"
+      },
+      "id": "node-filter-candidates",
+      "name": "🔍 Bộ Lọc & Ưu Tiên Hạn Chót (JS)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.drive_file_id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "node-download-drive",
+      "name": "🎬 Tải Video Từ Google Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        840,
+        400
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "google_drive_account",
+          "name": "Google Drive Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-yt",
+              "leftValue": "={{ $json.post_yt }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-youtube",
+      "name": "❓ Cần Đăng YouTube?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-fb",
+              "leftValue": "={{ $json.post_fb }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-facebook",
+      "name": "❓ Cần Đăng Facebook?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-ig",
+              "leftValue": "={{ $json.post_ig }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-instagram",
+      "name": "❓ Cần Đăng Instagram?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=multipart&part=snippet,status",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "youTubeOAuth2Api",
+        "sendBinaryData": true,
+        "binaryPropertyName": "data",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "snippet",
+              "value": "={{ JSON.stringify({ title: $json.yt_title, description: $json.yt_caption, categoryId: \"22\" }) }}"
+            },
+            {
+              "name": "status",
+              "value": "={{ JSON.stringify({ privacyStatus: \"public\", selfDeclaredMadeForKids: false }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-upload-youtube",
+      "name": "🔴 Xuất Bản YouTube Shorts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v19.0/{{ $json.brand_fb_page_id || \"me\" }}/video_reels",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "upload_phase",
+              "value": "finish"
+            },
+            {
+              "name": "video_state",
+              "value": "PUBLISHED"
+            },
+            {
+              "name": "description",
+              "value": "={{ $json.fb_caption }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-upload-facebook",
+      "name": "📘 Xuất Bản Facebook Reels",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v19.0/{{ $json.brand_ig_user_id }}/media",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "media_type",
+              "value": "REELS"
+            },
+            {
+              "name": "video_url",
+              "value": "={{ $json.drive_url }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $json.ig_caption }}"
+            },
+            {
+              "name": "share_to_feed",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-upload-instagram",
+      "name": "📸 Xuất Bản Instagram Reels",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        580
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * n8n Code Node: Format Publish Results for Google Sheet Write-back\n * \n * Assembles the status updates for status_yt, status_fb, status_ig on Tab Master.\n */\n\nconst items = $input.all();\nconst updates = [];\n\nfor (const item of items) {\n  const data = item.json;\n  \n  // Extract results from branches\n  const rowNumber = data.row_number;\n  const updatesObj = {\n    row_number: rowNumber,\n    job_id: data.job_id,\n  };\n  \n  // YouTube Status Update\n  if (data.youtube_result) {\n    const ytVideoId = data.youtube_result.id;\n    if (ytVideoId) {\n      updatesObj.status_yt = `https://www.youtube.com/watch?v=${ytVideoId}`;\n    } else if (data.youtube_result.error) {\n      updatesObj.status_yt = 'failed';\n    }\n  }\n  \n  // Facebook Status Update\n  if (data.facebook_result) {\n    if (data.facebook_result.success || data.facebook_result.id) {\n      updatesObj.status_fb = 'published';\n    } else if (data.facebook_result.error) {\n      updatesObj.status_fb = 'failed';\n    }\n  }\n  \n  // Instagram Status Update\n  if (data.instagram_result) {\n    const igMediaId = data.instagram_result.id;\n    if (igMediaId) {\n      updatesObj.status_ig = `https://www.instagram.com/p/${igMediaId}`;\n    } else if (data.instagram_result.error) {\n      updatesObj.status_ig = 'failed';\n    }\n  }\n  \n  updates.push({ json: updatesObj });\n}\n\nreturn updates;\n"
+      },
+      "id": "node-format-results",
+      "name": "📝 Tổng Hợp Kết Quả Xuất Bản",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1640,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1Xg67qhp1J_Izt7v5uDKRgKjdEZapX9giKJ_ym0OMJN4",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Master",
+          "mode": "name"
+        },
+        "columns": {
+          "matchingColumns": [
+            "job_id"
+          ],
+          "schema": [
+            {
+              "id": "job_id",
+              "displayName": "job_id",
+              "required": true,
+              "defaultMatch": true,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string"
+            },
+            {
+              "id": "status_yt",
+              "displayName": "status_yt",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": false,
+              "display": true,
+              "type": "string"
+            },
+            {
+              "id": "status_fb",
+              "displayName": "status_fb",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": false,
+              "display": true,
+              "type": "string"
+            },
+            {
+              "id": "status_ig",
+              "displayName": "status_ig",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": false,
+              "display": true,
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-update-sheet",
+      "name": "💾 Cập Nhật Trạng Thái Lên Master Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1900,
+        400
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google_sheets_account",
+          "name": "Google Sheets Account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "node-trigger-cron": {
+      "main": [
+        [
+          {
+            "node": "node-read-sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "node-trigger-webhook": {
+      "main": [
+        [
+          {
+            "node": "node-read-sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "node-read-sheet": {
+      "main": [
+        [
+          {
+            "node": "node-filter-candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "node-filter-candidates": {
+      "main": [
+        [
+          {
+            "node": "node-download-drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "node-download-drive": {
+      "main": [
+        [
+          {
+            "node": "node-if-youtube",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "node-if-facebook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "node-if-instagram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "node-if-youtube": {
+      "main": [
+        [
+          {
+            "node": "node-upload-youtube",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "node-format-results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "node-if-facebook": {
+      "main": [
+        [
+          {
+            "node": "node-upload-facebook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "node-format-results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "node-if-instagram": {
+      "main": [
+        [
+          {
+            "node": "node-upload-instagram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "node-format-results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "node-upload-youtube": {
+      "main": [
+        [
+          {
+            "node": "node-format-results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "node-upload-facebook": {
+      "main": [
+        [
+          {
+            "node": "node-format-results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "node-upload-instagram": {
+      "main": [
+        [
+          {
+            "node": "node-format-results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "node-format-results": {
+      "main": [
+        [
+          {
+            "node": "node-update-sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  }
+}
