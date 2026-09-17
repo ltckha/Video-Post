@@ -57,12 +57,12 @@ class GoogleDriveUploader:
             logger.error(f"Failed to connect to Google Drive API: {e}")
             self.service = None
 
-    def load_folder_cache(self, folder_id: str) -> Dict[str, str]:
+    def load_folder_cache(self, folder_id: str, force_refresh: bool = False) -> Dict[str, str]:
         """Pre-fetch all existing files in target Google Drive folder in a single batch API call."""
         if not self.service or not folder_id:
             return {}
 
-        if folder_id in self._folder_cache:
+        if not force_refresh and folder_id in self._folder_cache:
             return self._folder_cache[folder_id]
 
         file_map = {}
@@ -80,7 +80,7 @@ class GoogleDriveUploader:
 
         return file_map
 
-    def get_cached_drive_url(self, folder_id: str, file_name: str, job_id: str = "") -> Optional[str]:
+    def get_cached_drive_url(self, folder_id: str, file_name: str, job_id: str = "", refresh_if_miss: bool = False) -> Optional[str]:
         """Look up permanent Google Drive URL from pre-fetched cache."""
         if folder_id not in self._folder_cache:
             self.load_folder_cache(folder_id)
@@ -93,6 +93,13 @@ class GoogleDriveUploader:
         for c in candidates:
             if c and c in cache:
                 return cache[c]
+
+        if refresh_if_miss:
+            cache = self.load_folder_cache(folder_id, force_refresh=True)
+            for c in candidates:
+                if c and c in cache:
+                    return cache[c]
+
         return None
 
     @staticmethod
@@ -172,7 +179,8 @@ class GoogleDriveUploader:
         Uses Fast Batch Cache & Local Sync Bridge:
         1. Checks pre-loaded Drive cache for instant URL resolution (0ms).
         2. If not in cache, copies file to local Google Drive for Desktop sync folder (takes ~10ms).
-        3. Never returns local path '/Users/khan/...', only genuine 'https://drive.google.com/...' URLs.
+        3. Retries cache refresh for Desktop sync, or falls back to direct API upload.
+        4. Never returns local path '/Users/khan/...', only genuine 'https://drive.google.com/...' URLs.
         """
         p = Path(local_path)
         if not p.exists():
@@ -192,20 +200,24 @@ class GoogleDriveUploader:
 
         if local_drive_dir and local_drive_dir.exists():
             dest_file = local_drive_dir / target_name
+            copied = False
             try:
                 if not dest_file.exists() or dest_file.stat().st_size != p.stat().st_size:
                     shutil.copy2(str(p), str(dest_file))
                     logger.info(f"Copied '{target_name}' to local Google Drive folder: {dest_file}")
+                    copied = True
             except Exception as e:
                 logger.error(f"Error copying to local Google Drive folder: {e}")
 
-            # Re-check cache once
-            cached_url = self.get_cached_drive_url(folder_id, target_name, job_id=job_id)
-            if cached_url:
-                return cached_url
-            return ""
+            # Polling retry for Google Drive Desktop sync (up to 3 attempts, 1s interval)
+            for attempt in range(3):
+                if copied and attempt > 0:
+                    time.sleep(1)
+                cached_url = self.get_cached_drive_url(folder_id, target_name, job_id=job_id, refresh_if_miss=True)
+                if cached_url:
+                    return cached_url
 
-        # 3. Direct API Upload Fallback (for Shared Drives / Headless environments)
+        # 3. Direct API Upload Fallback (for immediate link resolution / headless environments)
         if not self.service:
             logger.warning("Google Drive service not available.")
             return None
