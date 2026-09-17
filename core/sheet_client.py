@@ -317,8 +317,6 @@ class GoogleSheetDirectClient:
                     context_caption = f"{title_val}\n✔ Mã SP: {raw_id}"
                     if cat_val:
                         context_caption += f"\n✔ Ngành hàng: {cat_val}"
-                    if price_val:
-                        context_caption += f"\n✔ Giá: {price_val}"
                     if color_val:
                         context_caption += f"\n✔ Màu sắc: {color_val}"
                     if desc_val:
