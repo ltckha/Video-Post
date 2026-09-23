@@ -1037,11 +1037,12 @@ def tiktok_post(
         
         if res.get("status") == "success":
             # Update status_tt on Google Sheet
+            tt_video_url = res.get("video_url") or "https://www.tiktok.com/tiktokstudio/content"
             updated_rec = dict(target)
-            updated_rec["status_tt"] = "published"
+            updated_rec["status_tt"] = tt_video_url
             sc.update_master_rows([updated_rec])
             sc.record_post_timestamp(brand=brand_tt, platform="tt")
-            console.print(f"[bold green]🎉 Hoàn tất! Đã đăng thành công lên TikTok và cập nhật status_tt = 'published' trên Google Sheet![/bold green]\n")
+            console.print(f"[bold green]🎉 Hoàn tất! Đã đăng thành công lên TikTok và cập nhật status_tt = '{tt_video_url}' trên Google Sheet![/bold green]\n")
         else:
             console.print(f"[bold red]❌ Đăng bài không thành công: {res}[/bold red]\n")
             try:
@@ -1195,11 +1196,12 @@ def auto_post_active(
                         meta = PostMetadata(title=title, description=caption)
                         res = fb_conn.upload_video(video_path=video_path, metadata=meta)
                         
-                        candidate["status_fb"] = "published"
+                        fb_video_url = res.get("video_url") or (f"https://www.facebook.com/{res.get('post_id')}" if res.get("post_id") else "published")
+                        candidate["status_fb"] = fb_video_url
                         updated_row = dict(candidate)
                         sc.update_master_rows([updated_row])
                         sc.record_post_timestamp(brand=b, platform="fb")
-                        console.print(f"     ✅ Đăng Facebook thành công: {res.get('post_id', 'OK')}")
+                        console.print(f"     ✅ Đăng Facebook thành công: {fb_video_url}")
                         brand_posted_count += 1
 
                     elif p == "yt":
@@ -1212,7 +1214,7 @@ def auto_post_active(
                         meta = PostMetadata(title=title, description=caption)
                         res = yt_conn.upload_video(video_path=video_path, metadata=meta)
                         
-                        yt_video_url = res.get("video_url") or (f"https://www.youtube.com/watch?v={res.get('video_id')}" if res.get("video_id") else "published")
+                        yt_video_url = res.get("video_url") or (f"https://www.youtube.com/shorts/{res.get('video_id')}" if res.get("video_id") else "published")
                         candidate["status_yt"] = yt_video_url
                         updated_row = dict(candidate)
                         sc.update_master_rows([updated_row])
@@ -1228,11 +1230,12 @@ def auto_post_active(
                         meta = PostMetadata(title=title, description=caption)
                         res = ig_conn.upload_video(video_path=video_path, metadata=meta)
                         
-                        candidate["status_ig"] = "published"
+                        ig_video_url = res.get("video_url") or (f"https://www.instagram.com/reel/{res.get('post_id')}" if res.get("post_id") else "published")
+                        candidate["status_ig"] = ig_video_url
                         updated_row = dict(candidate)
                         sc.update_master_rows([updated_row])
                         sc.record_post_timestamp(brand=b, platform="ig")
-                        console.print(f"     ✅ Đăng Instagram Reels thành công: {res.get('video_url', 'OK')}")
+                        console.print(f"     ✅ Đăng Instagram Reels thành công: {ig_video_url}")
                         brand_posted_count += 1
 
                     elif p == "tt":
@@ -1240,11 +1243,12 @@ def auto_post_active(
                         meta = PostMetadata(title=title, description=caption)
                         res = tt_conn.upload_video(video_path=video_path, metadata=meta)
                         if res.get("status") == "success":
-                            candidate["status_tt"] = "published"
+                            tt_video_url = res.get("video_url") or "https://www.tiktok.com/tiktokstudio/content"
+                            candidate["status_tt"] = tt_video_url
                             updated_row = dict(candidate)
                             sc.update_master_rows([updated_row])
                             sc.record_post_timestamp(brand=b, platform="tt")
-                            console.print(f"     ✅ Đăng TikTok Studio thành công!")
+                            console.print(f"     ✅ Đăng TikTok Studio thành công: {tt_video_url}")
                             brand_posted_count += 1
                         else:
                             console.print(f"     ❌ Đăng TikTok thất bại: {res}")

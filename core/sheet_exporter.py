@@ -120,14 +120,14 @@ class MasterSheetExporter:
                                 results_data[key] = val
                                 changed = True
                                 
-                    # Quét các cột Đăng tự động và đồng bộ ngược (cho phép user sửa bằng tay)
-                    for col, plat_key in [("status_fb", "facebook"), ("status_yt", "youtube"), ("status_ig", "instagram")]:
+                    # Quét các cột Đăng tự động & thủ công và đồng bộ ngược (hỗ trợ link video URL thật)
+                    for col, plat_key in [("status_fb", "facebook"), ("status_yt", "youtube"), ("status_ig", "instagram"), ("status_tt", "tiktok")]:
                         raw_cell_val = str(row.get(col, "")).strip()
                         val = raw_cell_val.lower()
 
-                        # Xử lý đặc biệt cho YouTube: chứa link video hoặc điểm số thẩm định (VD: 8.5/10)
-                        if plat_key == "youtube" and (raw_cell_val.startswith("http") or "/10" in raw_cell_val):
-                            plat_data = results_data.get("youtube", {})
+                        # Xử lý khi cell chứa link video URL (http/https) hoặc điểm số thẩm định (VD: 8.5/10)
+                        if raw_cell_val.startswith("http") or "/10" in raw_cell_val:
+                            plat_data = results_data.get(plat_key, {})
                             if not isinstance(plat_data, dict):
                                 plat_data = {}
                             if plat_data.get("status") != "published":
@@ -136,7 +136,9 @@ class MasterSheetExporter:
                             if raw_cell_val.startswith("http") and plat_data.get("video_url") != raw_cell_val:
                                 plat_data["video_url"] = raw_cell_val
                                 changed = True
-                            results_data["youtube"] = plat_data
+                            results_data[plat_key] = plat_data
+                            if plat_key == "tiktok":
+                                results_data["tiktok_status"] = raw_cell_val
                         elif val in valid_statuses:
                             plat_data = results_data.get(plat_key, {})
                             if isinstance(plat_data, dict):
@@ -147,6 +149,8 @@ class MasterSheetExporter:
                             else:
                                 results_data[plat_key] = {"status": val}
                                 changed = True
+                            if plat_key == "tiktok":
+                                results_data["tiktok_status"] = val
                                 
                     # Quét nội dung bài đăng (Captions)
                     platform_captions = results_data.get("platform_captions", {})
@@ -248,11 +252,14 @@ class MasterSheetExporter:
             # Per-Platform Status Determination (Chuẩn 4 trạng thái)
             status = r["status"]
             
-            # Hàm phụ trợ để lấy trạng thái nền tảng tự động
-            def get_auto_status(plat_key):
+            # Hàm phụ trợ để lấy trạng thái hiển thị nền tảng (ưu tiên URL bài đăng thật)
+            def get_platform_display_status(plat_key):
                 plat_data = results_data.get(plat_key, {})
-                if isinstance(plat_data, dict) and "status" in plat_data:
-                    return plat_data["status"]
+                if isinstance(plat_data, dict):
+                    if plat_data.get("video_url") and plat_data.get("status") in ["published", "success", "completed"]:
+                        return plat_data["video_url"]
+                    if "status" in plat_data:
+                        return plat_data["status"]
                 
                 # Fallback logic nếu chưa từng chạy
                 if plat_key in r["target_platforms"]:
@@ -261,26 +268,29 @@ class MasterSheetExporter:
                     return "pending"
                 return "not_configured"
 
-            fb_status = get_auto_status("facebook")
-
-            yt_data = results_data.get("youtube", {})
-            if isinstance(yt_data, dict) and yt_data.get("video_url") and yt_data.get("status") in ["published", "success", "completed"]:
-                yt_status = yt_data["video_url"]
-            else:
-                yt_status = get_auto_status("youtube")
-
-            ig_status = get_auto_status("instagram")
+            fb_status = get_platform_display_status("facebook")
+            yt_status = get_platform_display_status("youtube")
+            ig_status = get_platform_display_status("instagram")
             
             # Hàm phụ trợ trạng thái nền tảng thủ công (được đồng bộ 2 chiều)
             def get_manual_status(plat_key, db_key):
                 val = results_data.get(db_key)
+                if str(val).startswith("http"):
+                    return val
                 if status == "needs_edit" or val == "needs_edit":
                     return "needs_edit"
                 if val in ["published", "manual_done"]:
                     return val
                 return "manual_pending"
 
-            tt_status = get_manual_status("tiktok", "tiktok_status")
+            tt_data = results_data.get("tiktok", {})
+            if isinstance(tt_data, dict) and tt_data.get("video_url") and tt_data.get("status") in ["published", "success", "completed"]:
+                tt_status = tt_data["video_url"]
+            elif results_data.get("tiktok_status", "").startswith("http"):
+                tt_status = results_data["tiktok_status"]
+            else:
+                tt_status = get_manual_status("tiktok", "tiktok_status")
+
             sp_status = get_manual_status("shopee", "shopee_status")
             zl_status = get_manual_status("zalo", "zalo_status")
 

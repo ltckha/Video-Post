@@ -602,6 +602,24 @@ class TikTokBrowserConnector:
 
                 logger.info(f"[TikTok/{self.brand_name}] ✅ Đăng video thành công 100%!")
 
+                # Extract public or studio video link if available
+                post_url = ""
+                try:
+                    video_link_loc = page.locator("a[href*='/video/']").first
+                    if video_link_loc.is_visible(timeout=1000):
+                        href = video_link_loc.get_attribute("href")
+                        if href:
+                            post_url = href if href.startswith("http") else f"https://www.tiktok.com{href}"
+                except Exception:
+                    pass
+
+                if not post_url:
+                    current_url = page.url
+                    if "manage" in current_url or "content" in current_url:
+                        post_url = current_url
+                    else:
+                        post_url = "https://www.tiktok.com/tiktokstudio/content"
+
                 # Post-Publish Draft Storage Cleanup (Safe cleanup of TikTok temporary upload database)
                 cleanup_info = {}
                 try:
@@ -618,6 +636,7 @@ class TikTokBrowserConnector:
                     "platform": "tiktok",
                     "brand": self.brand_name,
                     "video_path": str(path),
+                    "video_url": post_url,
                     "cleanup": cleanup_info,
                 }
 
