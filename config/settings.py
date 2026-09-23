@@ -49,11 +49,13 @@ class Settings(BaseSettings):
     MASTER_SHEET_URL: str = Field(default="https://docs.google.com/spreadsheets/d/1Xg67qhp1J_Izt7v5uDKRgKjdEZapX9giKJ_ym0OMJN4/")
 
     # Alerts
-
     SLACK_WEBHOOK_URL: Optional[str] = Field(default=None)
-
-
     ALERT_EMAIL_RECIPIENT: Optional[str] = Field(default=None)
 
+    # TikTok Browser Automation & IndexedDB Cleanup Settings
+    # Modes: 'disabled' (no cleanup), 'dry-run' (measure & log without deleting), 'enabled' (cleanup draft database)
+    TIKTOK_CLEANUP_MODE: str = Field(default="disabled")
 
 settings = Settings()
+
+

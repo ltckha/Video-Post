@@ -31,6 +31,146 @@ window.chrome = { runtime: {} };
 POST_BUTTON_PATTERN = re.compile(r"^(Đăng|Post|Publish)$", re.IGNORECASE)
 
 
+def get_directory_size_bytes(directory_path: Path) -> int:
+    """Calculate total size of directory in bytes."""
+    total = 0
+    if not directory_path.exists():
+        return 0
+    try:
+        for entry in directory_path.rglob('*'):
+            if entry.is_file() and not entry.is_symlink():
+                try:
+                    total += entry.stat().st_size
+                except (OSError, FileNotFoundError):
+                    pass
+    except Exception:
+        pass
+    return total
+
+
+def format_bytes_human(num_bytes: int) -> str:
+    """Format bytes to human readable format (KB/MB/GB)."""
+    if num_bytes < 1024 * 1024:
+        return f"{num_bytes / 1024:.1f} KB"
+    elif num_bytes < 1024 * 1024 * 1024:
+        return f"{num_bytes / (1024 * 1024):.2f} MB"
+    else:
+        return f"{num_bytes / (1024 * 1024 * 1024):.2f} GB"
+
+
+def safe_cleanup_tiktok_draft_storage(
+    page,
+    profile_dir: Path,
+    brand_name: str = "Default",
+    mode: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Safely cleanup TikTok temporary upload / draft IndexedDB database ('web_creation_draft').
+
+    CRITICAL SAFETY RULES:
+    1. Does NOT delete the entire browser profile, preserving cookies and session logins.
+    2. Does NOT rm -rf .indexeddb.blob directly on OS, avoiding LevelDB corruption.
+    3. Deletes draft database via in-page standard W3C window.indexedDB.deleteDatabase().
+    4. Modes supported: 'disabled', 'dry-run', 'enabled'.
+    5. Never logs cookies, tokens, or credentials.
+    """
+    from config import settings
+
+    configured_mode = mode or getattr(settings, "TIKTOK_CLEANUP_MODE", "disabled") or os.environ.get("TIKTOK_CLEANUP_MODE", "disabled")
+    clean_mode = str(configured_mode).strip().lower()
+
+    if clean_mode not in ("disabled", "dry-run", "enabled"):
+        clean_mode = "disabled"
+
+    indexeddb_dir = profile_dir / "Default" / "IndexedDB"
+    size_before_bytes = get_directory_size_bytes(indexeddb_dir)
+
+    if clean_mode == "disabled":
+        logger.info(f"[TikTok/{brand_name}] Draft storage cleanup mode is 'disabled'. Skipping IndexedDB cleanup.")
+        return {
+            "status": "skipped",
+            "mode": "disabled",
+            "size_before": format_bytes_human(size_before_bytes),
+        }
+
+    # Identify target draft databases in browser context
+    try:
+        draft_dbs = page.evaluate('''async () => {
+            if (!window.indexedDB || !window.indexedDB.databases) {
+                return [];
+            }
+            const dbs = await window.indexedDB.databases();
+            const targets = [];
+            for (const db of dbs) {
+                const name = db.name || '';
+                if (name === 'web_creation_draft' || name.includes('creation_draft') || name.includes('upload_draft')) {
+                    targets.push(name);
+                }
+            }
+            return targets;
+        }''')
+    except Exception as eval_err:
+        logger.warning(f"[TikTok/{brand_name}] Could not inspect IndexedDB databases: {eval_err}")
+        draft_dbs = []
+
+    if clean_mode == "dry-run":
+        logger.info(
+            f"[TikTok/{brand_name}] [DRY-RUN] Phát hiện {len(draft_dbs)} draft database: {draft_dbs}. "
+            f"Dung lượng IndexedDB: {format_bytes_human(size_before_bytes)}. "
+            f"(Không thực hiện xóa vì đang ở chế độ dry-run)."
+        )
+        return {
+            "status": "dry-run",
+            "mode": "dry-run",
+            "targets": draft_dbs,
+            "size_before": format_bytes_human(size_before_bytes),
+        }
+
+    # Enabled mode: perform safe deletion via standard IndexedDB API
+    deleted_dbs = []
+    if draft_dbs:
+        try:
+            deleted_dbs = page.evaluate('''async (targets) => {
+                const results = [];
+                for (const name of targets) {
+                    try {
+                        await new Promise((resolve, reject) => {
+                            const req = window.indexedDB.deleteDatabase(name);
+                            req.onsuccess = () => resolve();
+                            req.onerror = () => reject(req.error);
+                            req.onblocked = () => resolve();
+                        });
+                        results.push(name);
+                    } catch (e) {
+                        // pass
+                    }
+                }
+                return results;
+            }''', draft_dbs)
+        except Exception as del_err:
+            logger.warning(f"[TikTok/{brand_name}] Error deleting draft databases via IndexedDB API: {del_err}")
+
+    # Brief wait for Chromium storage engine to flush LevelDB / unlink blob files
+    page.wait_for_timeout(1000)
+    size_after_bytes = get_directory_size_bytes(indexeddb_dir)
+    freed_bytes = max(0, size_before_bytes - size_after_bytes)
+
+    logger.info(
+        f"[TikTok/{brand_name}] [CLEANUP] Đã dọn dẹp database draft TikTok: {deleted_dbs}. "
+        f"Dung lượng IndexedDB: {format_bytes_human(size_before_bytes)} -> {format_bytes_human(size_after_bytes)} "
+        f"(Đã giải phóng: {format_bytes_human(freed_bytes)}). Session/Cookies giữ nguyên vẹn."
+    )
+
+    return {
+        "status": "cleaned",
+        "mode": "enabled",
+        "deleted_databases": deleted_dbs,
+        "size_before": format_bytes_human(size_before_bytes),
+        "size_after": format_bytes_human(size_after_bytes),
+        "freed": format_bytes_human(freed_bytes),
+    }
+
+
+
 def _normalize_cookie_editor_export(raw_cookies: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Convert raw cookies exported from Cookie-Editor Chrome Extension into Playwright format."""
     normalized = []
@@ -462,11 +602,23 @@ class TikTokBrowserConnector:
 
                 logger.info(f"[TikTok/{self.brand_name}] ✅ Đăng video thành công 100%!")
 
+                # Post-Publish Draft Storage Cleanup (Safe cleanup of TikTok temporary upload database)
+                cleanup_info = {}
+                try:
+                    cleanup_info = safe_cleanup_tiktok_draft_storage(
+                        page=page,
+                        profile_dir=target_profile,
+                        brand_name=self.brand_name
+                    )
+                except Exception as cl_err:
+                    logger.warning(f"[TikTok/{self.brand_name}] Cảnh báo khi dọn dẹp draft database: {cl_err}")
+
                 return {
                     "status": "success",
                     "platform": "tiktok",
                     "brand": self.brand_name,
                     "video_path": str(path),
+                    "cleanup": cleanup_info,
                 }
 
             except Exception as e:
