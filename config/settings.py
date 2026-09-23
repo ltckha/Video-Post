@@ -54,8 +54,9 @@ class Settings(BaseSettings):
 
     # TikTok Browser Automation & IndexedDB Cleanup Settings
     # Modes: 'disabled' (no cleanup), 'dry-run' (measure & log without deleting), 'enabled' (cleanup draft database)
-    TIKTOK_CLEANUP_MODE: str = Field(default="disabled")
+    TIKTOK_CLEANUP_MODE: str = Field(default="enabled")
 
 settings = Settings()
+
 
 
