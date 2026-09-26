@@ -145,3 +145,39 @@
 - Đã tích hợp hoàn chỉnh qua module `core/event_detector.py` và cơ sở tri thức 10 năm `config/events_calendar.json`.
 - Tự động suy luận ngữ nghĩa (ví dụ: "lồng đèn", "bánh trung thu" -> Tết Trung Thu; "balo tựu trường" -> Khai Giảng...) khi AI biên soạn caption và tự động điền vào Cột E trên Tab `Master`.
 
+---
+
+### 💡 Task #09: 🔗 Gắn Link Tiếp Thị Liên Kết (Shopee / Lazada Affiliate) & Auto First/Pinned Comment
+- **Dự án:** `Video-Post`
+- **Mức độ ưu tiên:** 🟡 Trung bình (P1)
+- **Trạng thái:** ⏳ **ĐÃ LƯU KẾ HOẠCH (Backlog - Sẵn sàng triển khai)**
+- **Tài liệu chi tiết:** [Kế hoạch Nghiên cứu & Thiết kế](file:///Users/khan/.gemini/antigravity/brain/d39a12d2-a7ad-4b8b-83a9-8e9025827c64/implementation_plan.md)
+
+#### 1. Bản chất Vấn đề:
+- Khi dán link trên điện thoại hoặc trình duyệt web, giao diện ứng dụng tự động phân giải (DeepLink / OpenGraph / Redirect) để tạo **Product Card / Thẻ sản phẩm nổi**.
+- Tuy nhiên, khi gửi qua API (Facebook Graph API Reels, YouTube Data API upload), hệ thống chỉ nhận `description` dưới dạng chuỗi text thuần, không tự sinh Product Card và link trong caption YouTube Shorts bị vô hiệu hóa click.
+
+#### 2. Giải pháp kỹ thuật lưu trữ:
+- **Auto First Comment & Pin Link**: Ngay sau khi video xuất bản thành công (đã có link bài post trên FB, YT, IG, TT), tự động chạy tác vụ đăng 1 bình luận đầu tiên chứa `shopee_link` / `lazada_link` kèm CTA hấp dẫn và ghim (Pin) lên top 1 (hỗ trợ Facebook Page, YouTube Shorts, TikTok).
+- **Playwright Shopping Tag Automation**: Với TikTok Studio Web, bổ sung thao tác click tự động vào ô "Thêm liên kết / Thêm sản phẩm" qua Playwright nếu kênh kích hoạt TikTok Shop Affiliate.
+
+---
+
+### 💡 Task #10: 💬 AI Smart Comment Responder: Tự Động Phản Hồi Bình Luận Dựa Trên Dữ Liệu Video
+- **Dự án:** `Video-Post`
+- **Mức độ ưu tiên:** 🟡 Trung bình (P1)
+- **Trạng thái:** ⏳ **ĐÃ LƯU KẾ HOẠCH (Backlog - Sẵn sàng triển khai)**
+- **Tài liệu chi tiết:** [Kế hoạch Nghiên cứu & Thiết kế](file:///Users/khan/.gemini/antigravity/brain/d39a12d2-a7ad-4b8b-83a9-8e9025827c64/implementation_plan.md)
+
+#### 1. Mục tiêu:
+- Tận dụng 100% kho dữ liệu video đã có trên Master Google Sheet & SQLite DB (`title`, `content_type`, `shopee_link`, `caption_*`, `brand_*`, URL bài đăng `status_*`) để tự động trả lời bình luận của khán giả một cách thông minh, tự nhiên và kích thích chuyển đổi đơn hàng.
+
+#### 2. Thiết kế Kiến trúc:
+- **Module Quét Bình Luận (`connectors/*/comments.py`)**: Lấy danh sách comment mới nhất theo định kỳ từ Facebook Graph API, YouTube Data API, Instagram API và TikTok Playwright.
+- **Bộ Não Phân Loại Ý Định & Soạn Thảo Phản Hồi (Gemini 3.5 Flash Lite)**:
+  - Khách hỏi giá / mua hàng / xin link $\rightarrow$ Trả lời thân thiện + gửi kèm link mua hàng Shopee/Lazada.
+  - Khách hỏi tư vấn size / chất liệu / công dụng $\rightarrow$ Dựa vào caption và tiêu đề để tư vấn chính xác.
+  - Khách khen ngợi $\rightarrow$ Cảm ơn duyên dáng, tăng tương tác đẩy xu hướng video.
+- **Bộ Chống Trùng Lặp (`comment_history` SQLite)**: Lưu cache ID các bình luận đã xử lý để đảm bảo không bao giờ trả lời trùng lặp.
+
+
