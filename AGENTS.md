@@ -48,8 +48,11 @@ Hệ thống **Video-Post** là bộ công cụ tự động hóa E-Commerce đa
 ---
 
 ## 💡 Ý Tưởng & Tính Năng Phát Triển Tiếp Theo ([`docs/IDEAS.md`](file:///Users/khan/Developer/Video-Post/docs/IDEAS.md))
-1. **Đưa sản phẩm vào Instagram từ link Shopee**: Tự động trích xuất thông tin sản phẩm và tích hợp link/sản phẩm vào bài đăng Instagram Reels/Story/Post.
-2. **Tối ưu hóa hành vi đăng bài TikTok giống người thật**: Bổ sung mô phỏng di chuyển chuột tự nhiên (Bezier Curve), ngắt nghỉ gõ phím (Human Keystroke Dynamics), lướt trang ngẫu nhiên trước khi upload nhằm chống bị TikTok quét chặn và bóp tương tác.
-3. **AI Market Intelligence Pipeline**: Kết hợp Gemini chạy định kỳ (hàng ngày/hàng tuần) tự động thu thập thông tin thời tiết, lễ hội, xu hướng sàn TMĐT để tối ưu hóa và tự động đẩy `post_before` cho các video đón đầu mùa vụ.
+1. **Đưa sản phẩm vào Instagram từ link Shopee & Gắn Link Affiliate**: Tự động trích xuất thông tin sản phẩm, đăng First Comment & Pinned Comment chứa link tiếp thị liên kết Shopee/Lazada sau khi xuất bản.
+2. **AI Smart Comment Responder**: Tự động phân loại ý định bình luận của khách hàng và dùng Gemini soạn thảo câu trả lời thân thiện kèm link mua hàng dựa trên dữ liệu video sẵn có.
+3. **Audit & Hoàn thiện Hệ thống Đa Kênh cho từng Brand (Brand Channel Matrix)**: Bổ sung Instagram ID, YouTube Token, Facebook Page còn thiếu cho các thương hiệu (Macadamia, Đà Lạt, Yen Handmade, Elegant Steps, YenYen Deals, YenYen Farm).
+4. **Tối ưu hóa hành vi đăng bài TikTok giống người thật**: Bổ sung mô phỏng di chuyển chuột tự nhiên (Bezier Curve), ngắt nghỉ gõ phím (Human Keystroke Dynamics).
+5. **AI Market Intelligence Pipeline**: Kết hợp Gemini thu thập thời tiết, lễ hội, xu hướng sàn TMĐT để tự động đẩy hạn chót `post_before` đón đầu mùa vụ.
+
 
 

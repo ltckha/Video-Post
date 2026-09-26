@@ -180,4 +180,29 @@
   - Khách khen ngợi $\rightarrow$ Cảm ơn duyên dáng, tăng tương tác đẩy xu hướng video.
 - **Bộ Chống Trùng Lặp (`comment_history` SQLite)**: Lưu cache ID các bình luận đã xử lý để đảm bảo không bao giờ trả lời trùng lặp.
 
+---
+
+### 💡 Task #11: 🎯 Audit & Hoàn Thiện Hệ Thống Kênh Đa Nền Tảng Cho Từng Brand (Brand Channel Matrix & Full Onboarding)
+- **Dự án:** `Video-Post`
+- **Mức độ ưu tiên:** 🔴 Cao (P0/P1)
+- **Trạng thái:** ⏳ **ĐÃ LƯU KẾ HOẠCH (Backlog - Sẵn sàng triển khai)**
+
+#### 1. Hiện trạng Ma trận Kênh (Brand Channel Matrix):
+- **Đã đủ 4/4 kênh (FB, YT, TT, IG)**: `Hiệu giày Hải Nancy`, `Mua Chuẩn Xài Lâu`.
+- **Thiếu Instagram (3/4 kênh)**: `Macadamia Hải Nancy`, `Ờ Đà Lạt vậy thôi`, `Yen Handmade Leather`.
+- **Thiếu YouTube & Instagram (2/4 kênh)**: `Elegant Steps`, `YenYen Deals`.
+- **Thiếu Facebook, YouTube & Instagram (1/4 kênh)**: `YenYen Farm`.
+
+#### 2. Kế hoạch Hoàn thiện:
+1. **Kết nối Instagram Professional Account**:
+   - Truy cập Meta Business Suite, liên kết Fanpage của từng thương hiệu (`Macadamia`, `Đà Lạt`, `Yen Handmade`, `Elegant Steps`, `YenYen Deals`) với tài khoản Instagram Business tương ứng để lấy `instagram_account_id`.
+   - Cập nhật vào `config/facebook_pages.json`.
+2. **Cấp quyền & Tạo Token YouTube Channels**:
+   - Tạo kênh hoặc lấy Refresh Token qua Google OAuth2 cho các kênh còn thiếu (`Elegant Steps`, `YenYen Deals`, `YenYen Farm`) lưu vào `config/tokens/` và khai báo trong `config/youtube_channels.json`.
+3. **Khai báo Facebook Fanpage cho Brand mới**:
+   - Bổ sung Page ID & Long-lived Token cho `YenYen Farm` vào `config/facebook_pages.json`.
+4. **Cơ chế Fallback & Tự động nhận diện kênh khả dụng**:
+   - Khi chạy `auto_post_active` hoặc export Google Sheet: Hệ thống tự động kiểm tra kênh nào đã đủ điều kiện thì đăng bài, kênh nào thiếu thì ghi nhận rõ trạng thái `not_configured` kèm log cảnh báo thân thiện, không gây gián đoạn luồng xuất bản.
+
+
 
