@@ -152,19 +152,31 @@ class GoogleSheetDirectClient:
         master_ws = self.get_worksheet("Master")
         master_data = master_ws.get_all_values()
         
+        existing_headers = []
         existing_master = {}
         existing_master_order = []
-        if len(master_data) > 1:
-            headers = [h.strip() for h in master_data[0]]
-            for row in master_data[1:]:
-                if not row or not any(row):
-                    continue
-                row_dict = {headers[i]: row[i] if i < len(row) else "" for i in range(len(headers)) if headers[i]}
-                job_id = str(row_dict.get("job_id", "")).strip()
-                if job_id:
-                    existing_master[job_id] = row_dict
-                    if job_id not in existing_master_order:
-                        existing_master_order.append(job_id)
+        if master_data and len(master_data) > 0:
+            existing_headers = [h.strip() for h in master_data[0] if h.strip()]
+            if len(master_data) > 1:
+                for row in master_data[1:]:
+                    if not row or not any(row):
+                        continue
+                    row_dict = {existing_headers[i]: row[i] if i < len(row) else "" for i in range(len(existing_headers)) if existing_headers[i]}
+                    job_id = str(row_dict.get("job_id", "")).strip()
+                    if job_id:
+                        existing_master[job_id] = row_dict
+                        if job_id not in existing_master_order:
+                            existing_master_order.append(job_id)
+
+        # Build dynamic final headers upfront: preserve exact order of existing headers, append missing standard headers
+        final_headers = list(existing_headers)
+        if not final_headers:
+            final_headers = list(MASTER_HEADERS)
+        else:
+            existing_norms = {normalize_header(h): h for h in final_headers}
+            for mh in MASTER_HEADERS:
+                if normalize_header(mh) not in existing_norms:
+                    final_headers.append(mh)
 
         # 2. Determine input sources from sheet_sources.json
         sources_cfg = Path("config/sheet_sources.json")
@@ -256,6 +268,7 @@ class GoogleSheetDirectClient:
                 color_idx = find_idx(["product_color", "Màu sắc", "Color"])
                 link_idx = find_idx(["shopee_link", "Link Shopee", "Affiliate Link", "Link"])
                 post_before_idx = find_idx(["post_before", "hạn chót", "deadline", "han_chot", "postbefore"])
+                score_idx = find_idx(["Opening Hook Score", "hook_score", "score", "audit_score", "Điểm Hook", "Điểm", "Score"])
 
                 for row in data_rows:
                     if not row or not any(row):
@@ -332,6 +345,7 @@ class GoogleSheetDirectClient:
                         "link_val": link_val,
                         "post_before_val": post_before_val,
                         "content_type": c_type,
+                        "hook_score": row[score_idx].strip() if score_idx != -1 and score_idx < len(row) else "",
                         "b_fb": "Hiệu giày Hải Nancy",
                         "b_yt": "Hiệu giày Hải Nancy",
                         "b_ig": "Hiệu giày Hải Nancy",
@@ -348,6 +362,7 @@ class GoogleSheetDirectClient:
                 video_idx = find_idx(["video_path", "Output File", "Video File Path", "output_path", "video_url"])
                 link_idx = find_idx(["shopee_link", "Link ưu đãi", "Affiliate Link", "Link sản phẩm", "shopeeLink"])
                 post_before_idx = find_idx(["post_before", "hạn chót", "deadline", "han_chot", "postbefore"])
+                score_idx = find_idx(["Opening Hook Score", "hook_score", "score", "audit_score", "Điểm Hook", "Điểm", "Score", "Rating"])
                 fb_brand_idx = find_idx(["brand_fb", "Fanpage Facebook", "Brand FB"])
                 yt_brand_idx = find_idx(["brand_yt", "Kênh YouTube", "Brand YT"])
                 ig_brand_idx = find_idx(["brand_ig", "Kênh Instagram", "Brand IG"])
@@ -370,6 +385,7 @@ class GoogleSheetDirectClient:
 
                     link_val = row[link_idx].strip() if link_idx != -1 and link_idx < len(row) else ""
                     post_before_val = row[post_before_idx].strip() if post_before_idx != -1 and post_before_idx < len(row) else ""
+                    score_val = row[score_idx].strip() if score_idx != -1 and score_idx < len(row) else ""
                     b_fb = row[fb_brand_idx].strip() if fb_brand_idx != -1 and fb_brand_idx < len(row) else ""
                     b_yt = row[yt_brand_idx].strip() if yt_brand_idx != -1 and yt_brand_idx < len(row) else ""
                     b_ig = row[ig_brand_idx].strip() if ig_brand_idx != -1 and ig_brand_idx < len(row) else ""
@@ -385,6 +401,7 @@ class GoogleSheetDirectClient:
                         "link_val": link_val,
                         "post_before_val": post_before_val,
                         "content_type": c_type,
+                        "hook_score": score_val,
                         "b_fb": b_fb,
                         "b_yt": b_yt,
                         "b_ig": b_ig,
@@ -543,13 +560,15 @@ class GoogleSheetDirectClient:
                     except Exception as e:
                         logger.warning(f"Failed to upload video for {raw_id} to Google Drive: {e}")
 
-            master_row = {
+            # Preserve all existing columns on Master (scores, notes, custom fields)
+            master_row = dict(prev)
+            master_row.update({
                 "job_id": raw_id,
                 "title": title_val or prev.get("title", ""),
                 "video_path": clean_video_path,
                 "drive_url": drive_url_val,
                 "post_before": post_before_val or prev.get("post_before", ""),
-                "content_type": c_type or "real_product",
+                "content_type": c_type or prev.get("content_type", "real_product"),
                 "shopee_link": link_val or prev.get("shopee_link", ""),
                 "caption_fb": cap_fb,
                 "caption_yt": cap_yt,
@@ -567,17 +586,43 @@ class GoogleSheetDirectClient:
                 "status_tt": st_tt,
                 "status_shopee": st_shopee,
                 "status_zalo": st_zalo,
-            }
+            })
+
+            # Check if source input has hook_score and map it
+            inp_dict = input_data_map.get(raw_id, {})
+            hook_score_val = inp_dict.get("hook_score", "")
+            if hook_score_val:
+                target_score_keys = [normalize_header(k) for k in ("Opening Hook Score", "hook_score", "score", "audit_score", "Điểm Hook", "Điểm", "Score", "Rating")]
+                for h in final_headers:
+                    if normalize_header(h) in target_score_keys:
+                        if not master_row.get(h):
+                            master_row[h] = hook_score_val
+
             all_input_rows.append(master_row)
 
-        # 5. Prepare 2D Matrix strictly mapped by MASTER_HEADERS
-        final_matrix = [MASTER_HEADERS]
+        # 5. Prepare 2D Matrix strictly mapped by dynamic final_headers
+        final_matrix = [final_headers]
         for r in all_input_rows:
-            final_matrix.append([r.get(h, "") for h in MASTER_HEADERS])
+            final_matrix.append([str(r.get(h, "")) for h in final_headers])
 
-        # 5. Direct batch update to Master Tab
-        master_ws.clear()
-        master_ws.update(values=final_matrix, range_name="A1", value_input_option="USER_ENTERED")
+        # 7. Direct in-place batch update to Master Tab WITHOUT clearing sheet/formatting
+        import gspread.utils
+        num_rows = len(final_matrix)
+        num_cols = len(final_headers)
+        end_col_letter = gspread.utils.rowcol_to_a1(1, num_cols)[:-1]
+        target_range = f"A1:{end_col_letter}{num_rows}"
+
+        master_ws.update(values=final_matrix, range_name=target_range, value_input_option="USER_ENTERED")
+
+        # Clean up any leftover trailing rows if new dataset has fewer rows than before
+        prev_row_count = len(master_data)
+        if prev_row_count > num_rows:
+            clear_range = f"A{num_rows + 1}:{end_col_letter}{prev_row_count}"
+            try:
+                master_ws.batch_clear([clear_range])
+            except Exception:
+                pass
+
         logger.info(f"Directly synced {len(all_input_rows)} rows to Tab Master via Google Sheets API v4! 🚀")
 
         return {
