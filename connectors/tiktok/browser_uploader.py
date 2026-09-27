@@ -249,6 +249,8 @@ class TikTokBrowserConnector:
             "--no-sandbox",
             "--disable-infobars",
             "--disable-dev-shm-usage",
+            "--disk-cache-size=20971520",
+            "--media-cache-size=10485760",
         ]
 
         realistic_ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
